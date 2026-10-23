@@ -1,0 +1,239 @@
+import Foundation
+
+/// Which slice of the workspace a list shows.
+public enum TaskScope: Hashable, Sendable {
+    case inbox
+    case today
+    case upcoming
+    case completed
+    case all
+    case project(UUID)
+}
+
+public enum TaskSort: String, CaseIterable, Identifiable, Codable, Sendable {
+    case manual
+    case dueDate
+    case priority
+    case title
+    case created
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .manual: return "Manual"
+        case .dueDate: return "Due Date"
+        case .priority: return "Priority"
+        case .title: return "Title"
+        case .created: return "Date Created"
+        }
+    }
+}
+
+public struct TaskQuery: Hashable, Sendable {
+    public var scope: TaskScope
+    public var searchText: String
+    /// Empty means every priority.
+    public var priorities: Set<Priority>
+    /// Whether tasks finished today stay visible (struck through) in active lists.
+    public var showCompleted: Bool
+    public var sort: TaskSort
+
+    public init(
+        scope: TaskScope,
+        searchText: String = "",
+        priorities: Set<Priority> = [],
+        showCompleted: Bool = true,
+        sort: TaskSort = .manual
+    ) {
+        self.scope = scope
+        self.searchText = searchText
+        self.priorities = priorities
+        self.showCompleted = showCompleted
+        self.sort = sort
+    }
+
+    public func run(on tasks: [TaskItem], projects: [Project], now: Date = Date(), calendar: Calendar = .current) -> [TaskItem] {
+        let names = Dictionary(projects.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+        let tokens = searchText
+            .split(whereSeparator: \.isWhitespace)
+            .map(String.init)
+
+        let matching = tasks.filter { task in
+            guard Self.belongs(task, to: scope, now: now, calendar: calendar) else { return false }
+            if task.isCompleted && !showCompleted && scope != .completed { return false }
+            if !priorities.isEmpty && !priorities.contains(task.priority) { return false }
+            if !tokens.isEmpty {
+                let projectName = task.projectID.flatMap { names[$0] }
+                return tokens.allSatisfy { Self.task(task, projectName: projectName, contains: $0) }
+            }
+            return true
+        }
+
+        if scope == .completed {
+            return matching.sorted { ($0.completedAt ?? .distantPast) > ($1.completedAt ?? .distantPast) }
+        }
+        return matching.sorted { lhs, rhs in
+            if lhs.isCompleted != rhs.isCompleted { return !lhs.isCompleted }
+            return Self.precedes(lhs, rhs, by: sort)
+        }
+    }
+
+    /// Incomplete tasks in a scope, for sidebar counters.
+    public static func openCount(in scope: TaskScope, tasks: [TaskItem], now: Date = Date(), calendar: Calendar = .current) -> Int {
+        tasks.reduce(0) { count, task in
+            count + (!task.isCompleted && belongs(task, to: scope, now: now, calendar: calendar) ? 1 : 0)
+        }
+    }
+
+    public static func belongs(_ task: TaskItem, to scope: TaskScope, now: Date, calendar: Calendar) -> Bool {
+        let startOfToday = calendar.startOfDay(for: now)
+        let startOfTomorrow = calendar.date(byAdding: .day, value: 1, to: startOfToday) ?? now
+        let finishedToday = task.completedAt.map { calendar.isDate($0, inSameDayAs: now) } ?? false
+
+        switch scope {
+        case .inbox:
+            return task.projectID == nil && (!task.isCompleted || finishedToday)
+        case .today:
+            guard let due = task.dueDate, due < startOfTomorrow else { return false }
+            return !task.isCompleted || finishedToday
+        case .upcoming:
+            guard let due = task.dueDate else { return false }
+            return due >= startOfTomorrow && !task.isCompleted
+        case .completed:
+            return task.isCompleted
+        case .all:
+            return true
+        case .project(let id):
+            return task.projectID == id && (!task.isCompleted || finishedToday)
+        }
+    }
+
+    static func task(_ task: TaskItem, projectName: String?, contains token: String) -> Bool {
+        if task.title.localizedStandardContains(token) { return true }
+        if task.notes.localizedStandardContains(token) { return true }
+        if let projectName, projectName.localizedStandardContains(token) { return true }
+        if task.subtasks.contains(where: { $0.title.localizedStandardContains(token) }) { return true }
+        return task.attachments.contains(where: { $0.name.localizedStandardContains(token) })
+    }
+
+    static func precedes(_ lhs: TaskItem, _ rhs: TaskItem, by sort: TaskSort) -> Bool {
+        switch sort {
+        case .manual:
+            break
+        case .dueDate:
+            switch (lhs.dueDate, rhs.dueDate) {
+            case let (l?, r?) where l != r: return l < r
+            case (.some, .none): return true
+            case (.none, .some): return false
+            default: break
+            }
+        case .priority:
+            if lhs.priority != rhs.priority { return lhs.priority > rhs.priority }
+            switch (lhs.dueDate, rhs.dueDate) {
+            case let (l?, r?) where l != r: return l < r
+            case (.some, .none): return true
+            case (.none, .some): return false
+            default: break
+            }
+        case .title:
+            let order = lhs.title.localizedStandardCompare(rhs.title)
+            if order != .orderedSame { return order == .orderedAscending }
+        case .created:
+            if lhs.createdAt != rhs.createdAt { return lhs.createdAt > rhs.createdAt }
+        }
+        if lhs.sortOrder != rhs.sortOrder { return lhs.sortOrder < rhs.sortOrder }
+        return lhs.createdAt < rhs.createdAt
+    }
+}
+
+/// A titled run of tasks in a list, e.g. "Overdue" or one day in Upcoming.
+public struct TaskSection: Identifiable, Hashable, Sendable {
+    public var id: String
+    /// `nil` for the single untitled section of a flat list.
+    public var title: String?
+    public var detail: String?
+    public var isWarning: Bool
+    public var tasks: [TaskItem]
+
+    public init(id: String, title: String? = nil, detail: String? = nil, isWarning: Bool = false, tasks: [TaskItem]) {
+        self.id = id
+        self.title = title
+        self.detail = detail
+        self.isWarning = isWarning
+        self.tasks = tasks
+    }
+
+    /// Splits an already sorted list into sections appropriate for the scope.
+    public static func make(for scope: TaskScope, tasks: [TaskItem], now: Date = Date(), calendar: Calendar = .current) -> [TaskSection] {
+        switch scope {
+        case .today:
+            let overdue = tasks.filter { $0.isOverdue(now: now, calendar: calendar) && !$0.isDue(onSameDayAs: now, calendar: calendar) }
+            guard !overdue.isEmpty else { return [TaskSection(id: "all", tasks: tasks)] }
+            let overdueIDs = Set(overdue.map(\.id))
+            let rest = tasks.filter { !overdueIDs.contains($0.id) }
+            var sections = [TaskSection(id: "overdue", title: "Overdue", isWarning: true, tasks: overdue)]
+            if !rest.isEmpty {
+                sections.append(TaskSection(id: "today", title: "Today", detail: now.formatted(.dateTime.weekday(.wide).month(.wide).day()), tasks: rest))
+            }
+            return sections
+
+        case .upcoming:
+            return grouped(tasks, by: { $0.dueDate }, ascending: true, now: now, calendar: calendar)
+
+        case .completed:
+            return grouped(tasks, by: { $0.completedAt }, ascending: false, now: now, calendar: calendar)
+
+        default:
+            return [TaskSection(id: "all", tasks: tasks)]
+        }
+    }
+
+    private static func grouped(
+        _ tasks: [TaskItem],
+        by date: (TaskItem) -> Date?,
+        ascending: Bool,
+        now: Date,
+        calendar: Calendar
+    ) -> [TaskSection] {
+        let buckets = Dictionary(grouping: tasks) { task in date(task).map { calendar.startOfDay(for: $0) } ?? .distantPast }
+        let days = buckets.keys.sorted(by: ascending ? (<) : (>))
+        return days.map { day in
+            let title = day == .distantPast ? "No Date" : DueDateText.dayLabel(for: day, now: now, calendar: calendar)
+            let detail = day == .distantPast ? nil : day.formatted(.dateTime.month(.abbreviated).day())
+            return TaskSection(
+                id: "\(day.timeIntervalSinceReferenceDate)",
+                title: title,
+                detail: title == detail ? nil : detail,
+                tasks: buckets[day] ?? []
+            )
+        }
+    }
+}
+
+public enum DueDateText {
+    /// "Today", "Tomorrow, 4:00 PM", "Friday", "Oct 30".
+    public static func label(for date: Date, hasTime: Bool, now: Date = Date(), calendar: Calendar = .current) -> String {
+        let day = dayLabel(for: date, now: now, calendar: calendar)
+        guard hasTime else { return day }
+        return "\(day), \(date.formatted(date: .omitted, time: .shortened))"
+    }
+
+    public static func dayLabel(for date: Date, now: Date = Date(), calendar: Calendar = .current) -> String {
+        switch dayDifference(from: now, to: date, calendar: calendar) {
+        case 0: return "Today"
+        case 1: return "Tomorrow"
+        case -1: return "Yesterday"
+        case 2...6: return date.formatted(.dateTime.weekday(.wide))
+        default:
+            if calendar.isDate(date, equalTo: now, toGranularity: .year) {
+                return date.formatted(.dateTime.month(.abbreviated).day())
+            }
+            return date.formatted(.dateTime.month(.abbreviated).day().year())
+        }
+    }
+
+    public static func dayDifference(from start: Date, to end: Date, calendar: Calendar = .current) -> Int {
+        calendar.dateComponents([.day], from: calendar.startOfDay(for: start), to: calendar.startOfDay(for: end)).day ?? 0
+    }
+}
