@@ -1,8 +1,10 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/TodoApp.State/TodoApp.State.csproj" />
     <Project Path="src/TodoCore/TodoCore.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/TodoApp.State.Tests/TodoApp.State.Tests.csproj" />
     <Project Path="tests/TodoCore.Tests/TodoCore.Tests.csproj" />
   </Folder>
 </Solution>
