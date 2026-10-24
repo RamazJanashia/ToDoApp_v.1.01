@@ -15,6 +15,9 @@ public sealed class TaskStore
     private readonly IDebouncer _saveDebouncer;
     private readonly IReminderScheduler _reminders;
 
+    // Off for the session when an unreadable data file couldn't be set aside, so it is never overwritten.
+    private bool _canSave = true;
+
     // Replaced, never mutated, so a snapshot is just a pair of references.
     private IReadOnlyList<TaskItem> _tasks = Array.Empty<TaskItem>();
     private IReadOnlyList<Project> _projects = Array.Empty<Project>();
@@ -25,6 +28,7 @@ public sealed class TaskStore
         ArgumentNullException.ThrowIfNull(saveDebouncer);
         ArgumentNullException.ThrowIfNull(reminders);
         _fileStore = new DataFileStore(directory);
+        Attachments = new AttachmentStorage(Path.Combine(directory, "Attachments"));
         _clock = clock;
         _saveDebouncer = saveDebouncer;
         _reminders = reminders;
@@ -42,6 +46,8 @@ public sealed class TaskStore
     public string? LoadIssue { get; set; }
 
     public UndoManager Undo { get; } = new();
+
+    public AttachmentStorage Attachments { get; }
 
     public event EventHandler? Changed;
 
@@ -181,6 +187,47 @@ public sealed class TaskStore
         UpdateTask(id, "Move Task", t => t with { SortOrder = order });
     }
 
+    // Attachments
+
+    public void AttachFiles(IEnumerable<string> paths, Guid taskId)
+    {
+        ArgumentNullException.ThrowIfNull(paths);
+        var added = new List<Attachment>();
+        foreach (var path in paths)
+        {
+            try
+            {
+                added.Add(Attachments.ImportFile(path, _clock.UtcNow));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+            {
+                AppLog.Error($"Couldn't attach {SafeFileName(path)}", ex);
+            }
+        }
+
+        if (added.Count == 0) return;
+        UpdateTask(taskId, "Add Attachment", t => t with { Attachments = t.Attachments.AddRange(added) });
+    }
+
+    /// <summary>Returns false when the text isn't a usable web address.</summary>
+    public bool AttachLink(string text, Guid taskId)
+    {
+        if (AttachmentStorage.Link(text, _clock.UtcNow) is not { } attachment) return false;
+        UpdateTask(taskId, "Add Link", t => t with { Attachments = t.Attachments.Add(attachment) });
+        return true;
+    }
+
+    public void RemoveAttachment(Guid attachmentId, Guid taskId)
+    {
+        UpdateTask(taskId, "Remove Attachment", t => t with { Attachments = t.Attachments.RemoveAll(a => a.Id == attachmentId) });
+    }
+
+    private static string SafeFileName(string path)
+    {
+        try { return Path.GetFileName(path); }
+        catch (ArgumentException) { return path; }
+    }
+
     // Projects
 
     public Project CreateProject(string name, string icon, ProjectColor color)
@@ -306,8 +353,19 @@ public sealed class TaskStore
 
     private void Load()
     {
-        // A file that exists but can't be read propagates; Task 8 adds recovery.
-        var saved = _fileStore.Load();
+        AppData? saved;
+        try
+        {
+            saved = _fileStore.Load();
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("Couldn't read saved tasks", ex);
+            RecoverFromUnreadableFile();
+            // No attachment cleanup here: the unreadable file may still refer to every attachment.
+            return;
+        }
+
         if (saved is not null)
         {
             _tasks = saved.Tasks.ToList().AsReadOnly();
@@ -321,6 +379,36 @@ public sealed class TaskStore
             _projects = sample.Projects.ToList().AsReadOnly();
             SaveNow();
         }
+
+        var referenced = _tasks
+            .SelectMany(t => t.Attachments)
+            .Where(a => a.Kind == AttachmentKind.File)
+            .Select(a => a.Location)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        Attachments.RemoveFiles(referenced);
+    }
+
+    /// <summary>
+    /// Sets the unreadable file aside so a fresh list can be saved. If even that fails, saving is switched off
+    /// for the session so the original is never overwritten.
+    /// </summary>
+    private void RecoverFromUnreadableFile()
+    {
+        var folder = _fileStore.Directory;
+        try
+        {
+            var moved = _fileStore.QuarantineDataFile(_clock.UtcNow);
+            LoadIssue = "Your saved tasks couldn’t be read, so a fresh list was started. "
+                + $"The original file was kept as “{Path.GetFileName(moved)}” in {folder}.";
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("Couldn't move the unreadable file aside", ex);
+            _canSave = false;
+            LoadIssue = "Your saved tasks couldn’t be read, and the file couldn’t be set aside. "
+                + "To protect it, changes won’t be saved until TodoApp is restarted. "
+                + $"The file is tasks.json in {folder}.";
+        }
     }
 
     private void DidChange()
@@ -332,13 +420,16 @@ public sealed class TaskStore
     public void SaveNow()
     {
         _saveDebouncer.Cancel();
-        try
+        if (_canSave)
         {
-            _fileStore.Save(new AppData(AppData.CurrentVersion, _projects, _tasks));
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            AppLog.Error("Couldn't save tasks", ex);
+            try
+            {
+                _fileStore.Save(new AppData(AppData.CurrentVersion, _projects, _tasks));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                AppLog.Error("Couldn't save tasks", ex);
+            }
         }
 
         _reminders.Sync(_tasks, _projects);
