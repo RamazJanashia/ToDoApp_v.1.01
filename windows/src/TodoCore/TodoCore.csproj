@@ -3,4 +3,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>TodoCore</RootNamespace>
   </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="TodoCore.Tests" />
+  </ItemGroup>
 </Project>

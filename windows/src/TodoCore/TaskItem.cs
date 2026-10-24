@@ -122,6 +122,51 @@ public sealed record TaskItem
 
     public bool IsDueOnSameDayAs(DateTime day, TodoCalendar calendar) =>
         DueDate is { } due && calendar.IsSameDay(due, day);
+
+    /// <summary>
+    /// A fresh, incomplete copy scheduled for the next occurrence, or null if the task doesn't repeat.
+    /// The next occurrence always lands after today, so finishing an overdue task doesn't
+    /// immediately produce another overdue one.
+    /// </summary>
+    public TaskItem? NextOccurrence(DateTime now, TodoCalendar calendar)
+    {
+        if (Recurrence is not { } rule) return null;
+        var startOfToday = calendar.StartOfDay(now);
+        var baseDate = DueDate ?? startOfToday;
+        var threshold = HasDueTime ? now : calendar.AddDays(startOfToday, 1);
+        var preferred = PreferredDay(baseDate, RecurrenceDay, calendar);
+
+        var next = rule.NextDate(baseDate, preferred, calendar);
+        var steps = 0;
+        while (next < threshold && steps < 5_000)
+        {
+            next = rule.NextDate(next, preferred, calendar);
+            steps++;
+        }
+
+        return this with
+        {
+            Id = Guid.NewGuid(),
+            RecurrenceDay = preferred,
+            NextOccurrenceId = null,
+            Status = TaskStatus.Todo,
+            CompletedAt = null,
+            CreatedAt = now,
+            DueDate = next,
+            Subtasks = new ValueList<Subtask>(Subtasks.Select(s => new Subtask { Title = s.Title })),
+        };
+    }
+
+    /// <summary>
+    /// The remembered day wins only while <paramref name="baseDate"/> sits on a clamped month end (Feb 28 standing
+    /// in for the 31st). Any other day means the user moved the task, and that day becomes the target.
+    /// </summary>
+    internal static int PreferredDay(DateTime baseDate, int? remembered, TodoCalendar calendar)
+    {
+        var day = calendar.Day(baseDate);
+        if (remembered is { } wanted && wanted > day && day == calendar.DaysInMonth(baseDate)) return wanted;
+        return day;
+    }
 }
 
 public static class ReminderPreset
