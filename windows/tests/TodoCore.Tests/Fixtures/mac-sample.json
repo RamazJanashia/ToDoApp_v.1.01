@@ -1,0 +1,310 @@
+{
+  "projects" : [
+    {
+      "color" : "blue",
+      "icon" : "folder",
+      "id" : "0905AB33-A30F-4D94-8D6F-7BE7F7B0CA90",
+      "name" : "Work"
+    },
+    {
+      "color" : "green",
+      "icon" : "folder",
+      "id" : "7CF5467D-803C-4087-B8E4-F4268407D6F6",
+      "name" : "Personal"
+    },
+    {
+      "color" : "white",
+      "icon" : "folder",
+      "id" : "145B1F23-34EE-41DC-835B-C1912AABA587",
+      "name" : "Projects"
+    }
+  ],
+  "tasks" : [
+    {
+      "attachments" : [
+
+      ],
+      "createdAt" : "2026-10-24T20:05:07Z",
+      "dueDate" : "2026-10-22T22:00:00Z",
+      "hasDueTime" : false,
+      "id" : "0A240A86-0CE0-4A2F-A825-C63683229382",
+      "notes" : "Review the final agreement before sending.",
+      "priority" : 3,
+      "projectID" : "0905AB33-A30F-4D94-8D6F-7BE7F7B0CA90",
+      "sortOrder" : 1,
+      "status" : "todo",
+      "subtasks" : [
+        {
+          "id" : "A8819C0D-A8F1-4BC5-9832-844079BB197C",
+          "isDone" : false,
+          "title" : "Check clauses"
+        },
+        {
+          "id" : "8D2445C7-F3DB-4AA8-AC0A-40E1F239905B",
+          "isDone" : false,
+          "title" : "Confirm payment terms"
+        }
+      ],
+      "title" : "Review contract"
+    },
+    {
+      "attachments" : [
+
+      ],
+      "createdAt" : "2026-10-24T20:05:07Z",
+      "dueDate" : "2026-10-23T14:00:00Z",
+      "hasDueTime" : true,
+      "id" : "5A8AD87C-2B61-4D86-B8E7-321521337615",
+      "notes" : "",
+      "priority" : 2,
+      "projectID" : "0905AB33-A30F-4D94-8D6F-7BE7F7B0CA90",
+      "recurrence" : {
+        "frequency" : "weekly",
+        "interval" : 1,
+        "weekdays" : [
+
+        ]
+      },
+      "reminderOffset" : 900,
+      "sortOrder" : 2,
+      "status" : "todo",
+      "subtasks" : [
+
+      ],
+      "title" : "Send weekly report"
+    },
+    {
+      "attachments" : [
+
+      ],
+      "createdAt" : "2026-10-24T20:05:07Z",
+      "dueDate" : "2026-10-22T22:00:00Z",
+      "hasDueTime" : false,
+      "id" : "08B65EA1-50E0-41DF-A7A9-5BFF102BB6FA",
+      "notes" : "",
+      "priority" : 0,
+      "projectID" : "7CF5467D-803C-4087-B8E4-F4268407D6F6",
+      "sortOrder" : 3,
+      "status" : "todo",
+      "subtasks" : [
+
+      ],
+      "title" : "Call supplier"
+    },
+    {
+      "attachments" : [
+
+      ],
+      "completedAt" : "2026-10-23T13:30:00Z",
+      "createdAt" : "2026-10-24T20:05:07Z",
+      "dueDate" : "2026-10-22T22:00:00Z",
+      "hasDueTime" : false,
+      "id" : "54528F98-F520-4E1A-8394-243DA3572220",
+      "notes" : "",
+      "priority" : 0,
+      "projectID" : "0905AB33-A30F-4D94-8D6F-7BE7F7B0CA90",
+      "sortOrder" : 4,
+      "status" : "done",
+      "subtasks" : [
+
+      ],
+      "title" : "Review invoices"
+    },
+    {
+      "attachments" : [
+
+      ],
+      "createdAt" : "2026-10-24T20:05:07Z",
+      "dueDate" : "2026-10-22T22:00:00Z",
+      "hasDueTime" : false,
+      "id" : "27BFE718-494A-40F3-9816-5EFDE5E0603D",
+      "notes" : "",
+      "priority" : 1,
+      "projectID" : "7CF5467D-803C-4087-B8E4-F4268407D6F6",
+      "sortOrder" : 5,
+      "status" : "todo",
+      "subtasks" : [
+
+      ],
+      "title" : "Book dentist appointment"
+    },
+    {
+      "attachments" : [
+
+      ],
+      "createdAt" : "2026-10-24T20:05:07Z",
+      "hasDueTime" : false,
+      "id" : "B0627532-967D-44FC-A05A-829E6A5009F2",
+      "notes" : "Oat milk, coffee beans, lemons.",
+      "priority" : 0,
+      "sortOrder" : 6,
+      "status" : "todo",
+      "subtasks" : [
+
+      ],
+      "title" : "Buy groceries"
+    },
+    {
+      "attachments" : [
+        {
+          "addedAt" : "2026-10-24T20:05:07Z",
+          "id" : "A71FE0B6-ECF0-4F57-8A11-9A1F2316C00D",
+          "kind" : "link",
+          "location" : "https:\/\/developer.apple.com\/design\/human-interface-guidelines\/typography",
+          "name" : "developer.apple.com"
+        }
+      ],
+      "createdAt" : "2026-10-24T20:05:07Z",
+      "hasDueTime" : false,
+      "id" : "0DFF9004-F34E-4454-9226-406D03A9692B",
+      "notes" : "",
+      "priority" : 0,
+      "sortOrder" : 7,
+      "status" : "todo",
+      "subtasks" : [
+
+      ],
+      "title" : "Read article on interface typography"
+    },
+    {
+      "attachments" : [
+
+      ],
+      "createdAt" : "2026-10-24T20:05:07Z",
+      "hasDueTime" : false,
+      "id" : "8900AAFC-EA82-4179-B30E-0C9382703EBA",
+      "notes" : "",
+      "priority" : 0,
+      "sortOrder" : 8,
+      "status" : "todo",
+      "subtasks" : [
+
+      ],
+      "title" : "Organize photo library"
+    },
+    {
+      "attachments" : [
+
+      ],
+      "createdAt" : "2026-10-24T20:05:07Z",
+      "dueDate" : "2026-10-25T09:00:00Z",
+      "hasDueTime" : true,
+      "id" : "AC395EEE-5B21-4821-A285-D392AA3ABDE0",
+      "notes" : "",
+      "priority" : 3,
+      "projectID" : "0905AB33-A30F-4D94-8D6F-7BE7F7B0CA90",
+      "sortOrder" : 9,
+      "status" : "todo",
+      "subtasks" : [
+
+      ],
+      "title" : "Quarterly planning"
+    },
+    {
+      "attachments" : [
+
+      ],
+      "createdAt" : "2026-10-24T20:05:07Z",
+      "dueDate" : "2026-10-27T23:00:00Z",
+      "hasDueTime" : false,
+      "id" : "FB27E687-67B4-4388-A3F2-385D59EF5898",
+      "notes" : "",
+      "priority" : 2,
+      "projectID" : "7CF5467D-803C-4087-B8E4-F4268407D6F6",
+      "sortOrder" : 10,
+      "status" : "todo",
+      "subtasks" : [
+
+      ],
+      "title" : "Renew passport"
+    },
+    {
+      "attachments" : [
+
+      ],
+      "createdAt" : "2026-10-24T20:05:07Z",
+      "dueDate" : "2026-10-31T23:00:00Z",
+      "hasDueTime" : false,
+      "id" : "0B6720AC-5F2A-4CED-97BB-C514244CBBE5",
+      "notes" : "",
+      "priority" : 0,
+      "projectID" : "145B1F23-34EE-41DC-835B-C1912AABA587",
+      "sortOrder" : 11,
+      "status" : "todo",
+      "subtasks" : [
+
+      ],
+      "title" : "Prepare team offsite"
+    },
+    {
+      "attachments" : [
+
+      ],
+      "createdAt" : "2026-10-24T20:05:07Z",
+      "dueDate" : "2026-10-30T23:00:00Z",
+      "hasDueTime" : false,
+      "id" : "0EC3DDB1-2205-4AB3-8DEC-1C00C175DF62",
+      "notes" : "",
+      "priority" : 0,
+      "projectID" : "7CF5467D-803C-4087-B8E4-F4268407D6F6",
+      "recurrence" : {
+        "frequency" : "monthly",
+        "interval" : 1,
+        "weekdays" : [
+
+        ]
+      },
+      "sortOrder" : 12,
+      "status" : "todo",
+      "subtasks" : [
+
+      ],
+      "title" : "Pay rent"
+    },
+    {
+      "attachments" : [
+
+      ],
+      "createdAt" : "2026-10-24T20:05:07Z",
+      "hasDueTime" : false,
+      "id" : "BF7BCDD3-A629-4163-8EB0-DA426BEF00A6",
+      "notes" : "",
+      "priority" : 0,
+      "projectID" : "145B1F23-34EE-41DC-835B-C1912AABA587",
+      "sortOrder" : 13,
+      "status" : "inProgress",
+      "subtasks" : [
+
+      ],
+      "title" : "Redesign portfolio site"
+    },
+    {
+      "attachments" : [
+
+      ],
+      "createdAt" : "2026-10-24T20:05:07Z",
+      "dueDate" : "2026-10-25T23:00:00Z",
+      "hasDueTime" : false,
+      "id" : "ECC8B6D0-4780-49BE-8636-6722FB15C1A1",
+      "notes" : "",
+      "priority" : 0,
+      "projectID" : "7CF5467D-803C-4087-B8E4-F4268407D6F6",
+      "recurrence" : {
+        "frequency" : "weekly",
+        "interval" : 1,
+        "weekdays" : [
+          2,
+          4,
+          6
+        ]
+      },
+      "sortOrder" : 14,
+      "status" : "todo",
+      "subtasks" : [
+
+      ],
+      "title" : "Gym"
+    }
+  ],
+  "version" : 1
+}

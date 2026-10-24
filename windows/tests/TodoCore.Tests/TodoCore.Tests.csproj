@@ -13,6 +13,9 @@
     <Using Include="Xunit" />
   </ItemGroup>
   <ItemGroup>
+    <None Update="Fixtures\mac-sample.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../../src/TodoCore/TodoCore.csproj" />
   </ItemGroup>
 </Project>
