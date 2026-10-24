@@ -163,15 +163,26 @@ public sealed class AttachmentTests : IDisposable
         NewStorage().RemoveFiles(new HashSet<string>());
     }
 
-    [Fact]
-    public void FileSize_Formats()
+    [Theory]
+    [InlineData(0, "Zero KB")]
+    [InlineData(1, "1 byte")]
+    [InlineData(532, "532 bytes")]
+    [InlineData(999, "999 bytes")]
+    [InlineData(1000, "1 KB")]
+    [InlineData(1499, "1 KB")]
+    [InlineData(1500, "2 KB")]
+    [InlineData(12345, "12 KB")]
+    [InlineData(999499, "999 KB")]
+    [InlineData(999999, "1 MB")]
+    [InlineData(1_200_000, "1.2 MB")]
+    [InlineData(1_250_000, "1.3 MB")]
+    [InlineData(2_000_000, "2 MB")]
+    [InlineData(12_500_000, "12.5 MB")]
+    [InlineData(1_250_000_000, "1.25 GB")]
+    [InlineData(1_500_000_000, "1.5 GB")]
+    public void FileSize_Formats(long bytes, string expected)
     {
-        Assert.Equal("532 bytes", AttachmentStorage.FileSize(532));
-        Assert.Equal("1.2 MB", AttachmentStorage.FileSize(1_200_000));
-        Assert.Equal("1 byte", AttachmentStorage.FileSize(1));
-        Assert.Equal("12 KB", AttachmentStorage.FileSize(12_345));
-        Assert.Equal("2 MB", AttachmentStorage.FileSize(2_000_000));
-        Assert.Equal("1.5 GB", AttachmentStorage.FileSize(1_500_000_000));
+        Assert.Equal(expected, AttachmentStorage.FileSize(bytes));
     }
 
     [Fact]

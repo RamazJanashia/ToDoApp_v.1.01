@@ -115,7 +115,7 @@ public sealed class AttachmentStorage
 
     /// <summary>
     /// Like Foundation's ByteCountFormatter with the .file style: decimal units, whole bytes and kilobytes,
-    /// one decimal place from megabytes up ("532 bytes", "12 KB", "1.2 MB").
+    /// one decimal for megabytes and two from gigabytes up ("532 bytes", "12 KB", "1.2 MB", "1.25 GB").
     /// </summary>
     public static string FileSize(long bytes)
     {
@@ -133,10 +133,13 @@ public sealed class AttachmentStorage
             unit++;
         }
 
-        var text = Rounded(value, unit).ToString(unit == 0 ? "0" : "0.#", culture);
+        var text = Rounded(value, unit).ToString(Decimals(unit) switch { 0 => "0", 1 => "0.#", _ => "0.##" }, culture);
         return $"{text} {units[unit]}";
     }
 
+    /// <summary>Decimal places per unit: none for KB, one for MB, two for GB and above.</summary>
+    private static int Decimals(int unit) => Math.Min(unit, 2);
+
     private static decimal Rounded(decimal value, int unit) =>
-        Math.Round(value, unit == 0 ? 0 : 1, MidpointRounding.AwayFromZero);
+        Math.Round(value, Decimals(unit), MidpointRounding.AwayFromZero);
 }
