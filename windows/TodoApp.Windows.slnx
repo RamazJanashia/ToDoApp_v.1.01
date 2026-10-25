@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/TodoApp/TodoApp.csproj" />
     <Project Path="src/TodoApp.State/TodoApp.State.csproj" />
     <Project Path="src/TodoCore/TodoCore.csproj" />
   </Folder>

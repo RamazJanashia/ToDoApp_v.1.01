@@ -1,0 +1,87 @@
+<Window
+    x:Class="TodoApp.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:TodoApp">
+  <Grid x:Name="Root" Background="{ThemeResource BackgroundBrush}">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="48" />
+      <RowDefinition Height="*" />
+    </Grid.RowDefinitions>
+
+    <!-- Title bar: the window title centred; search, appearance and inspector on the right (placeholders for now). -->
+    <Grid x:Name="TitleBarArea" Background="Transparent">
+      <TextBlock
+          x:Name="TitleText"
+          Style="{StaticResource AppTextBase}"
+          HorizontalAlignment="Center"
+          VerticalAlignment="Center"
+          FontSize="13"
+          FontWeight="Medium"
+          Opacity="0.88"
+          MaxLines="1"
+          TextTrimming="CharacterEllipsis" />
+      <StackPanel
+          x:Name="TitleBarTrailing"
+          HorizontalAlignment="Right"
+          VerticalAlignment="Center"
+          Orientation="Horizontal"
+          Spacing="8">
+        <Border
+            Width="210"
+            Height="28"
+            Padding="9,0"
+            CornerRadius="7"
+            Background="{ThemeResource PanelBrush}"
+            BorderBrush="{ThemeResource SeparatorBrush}"
+            BorderThickness="1">
+          <StackPanel VerticalAlignment="Center" Orientation="Horizontal" Spacing="6">
+            <FontIcon x:Name="SearchGlyph" FontSize="11.5" FontWeight="Medium" Foreground="{ThemeResource TertiaryTextBrush}" />
+            <TextBlock Style="{StaticResource AppTextBase}" FontSize="13" Foreground="{ThemeResource TertiaryTextBrush}" Text="Search" />
+          </StackPanel>
+        </Border>
+        <Button x:Name="AppearanceButton" Style="{StaticResource IconButtonStyle}" />
+        <Button x:Name="InspectorButton" Style="{StaticResource IconButtonStyle}" FontSize="15" />
+      </StackPanel>
+    </Grid>
+
+    <!-- Sidebar · centre · inspector. The edge columns are 1 px; their resizers reach into the neighbours. -->
+    <Grid x:Name="Columns" Grid.Row="1">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition x:Name="SidebarColumn" Width="250" />
+        <ColumnDefinition x:Name="SidebarEdgeColumn" Width="1" />
+        <ColumnDefinition Width="*" MinWidth="500" />
+        <ColumnDefinition x:Name="InspectorEdgeColumn" Width="1" />
+        <ColumnDefinition x:Name="InspectorColumn" Width="340" />
+      </Grid.ColumnDefinitions>
+      <ContentControl
+          x:Name="SidebarHost"
+          Grid.Column="0"
+          HorizontalContentAlignment="Stretch"
+          VerticalContentAlignment="Stretch"
+          IsTabStop="False" />
+      <ContentControl
+          x:Name="CenterHost"
+          Grid.Column="2"
+          HorizontalContentAlignment="Stretch"
+          VerticalContentAlignment="Stretch"
+          IsTabStop="False" />
+      <ContentControl
+          x:Name="InspectorHost"
+          Grid.Column="4"
+          HorizontalContentAlignment="Stretch"
+          VerticalContentAlignment="Stretch"
+          IsTabStop="False" />
+      <local:ColumnResizer x:Name="SidebarResizer" Grid.Column="1" Direction="1" />
+      <local:ColumnResizer
+          x:Name="InspectorResizer"
+          Grid.Column="3"
+          Direction="-1"
+          VerticalInset="14"
+          LineBrush="{ThemeResource SeparatorBrush}" />
+    </Grid>
+
+    <!-- The hairline under the title bar. -->
+    <Rectangle Grid.Row="1" Height="1" VerticalAlignment="Top" Fill="{ThemeResource SeparatorBrush}" />
+  </Grid>
+</Window>

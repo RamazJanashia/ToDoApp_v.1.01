@@ -1,0 +1,122 @@
+<!--
+  The app's colours: every token of Sources/TodoApp/Design/Theme.swift, as {Token}Brush.
+  "ink a/b" is white at alpha a in Dark and black at alpha b in Light.
+  "Default" holds the Dark values; Windows also falls back to it in High Contrast.
+-->
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <ResourceDictionary.ThemeDictionaries>
+    <ResourceDictionary x:Key="Default">
+      <!-- Surfaces -->
+      <SolidColorBrush x:Key="BackgroundBrush" Color="#08090B" />
+      <SolidColorBrush x:Key="PanelBrush" Color="#101114" />
+      <SolidColorBrush x:Key="RaisedBrush" Color="#16171B" />
+      <SolidColorBrush x:Key="RaisedHoverBrush" Color="#1A1B1F" />
+      <SolidColorBrush x:Key="RaisedSelectedBrush" Color="#1E1F24" />
+
+      <!-- Lines and states -->
+      <SolidColorBrush x:Key="SeparatorBrush" Color="#13FFFFFF" />        <!-- ink 0.075 -->
+      <SolidColorBrush x:Key="StrongSeparatorBrush" Color="#21FFFFFF" />  <!-- ink 0.13 -->
+      <SolidColorBrush x:Key="HoverBrush" Color="#0BFFFFFF" />            <!-- ink 0.045 -->
+      <SolidColorBrush x:Key="SelectionBrush" Color="#1CFFFFFF" />        <!-- ink 0.11 -->
+      <SolidColorBrush x:Key="FocusRingBrush" Color="#33FFFFFF" />        <!-- ink 0.2 -->
+      <SolidColorBrush x:Key="SelectedOutlineBrush" Color="#38FFFFFF" />  <!-- ink 0.22 -->
+      <SolidColorBrush x:Key="TrackBrush" Color="#1AFFFFFF" />            <!-- ink 0.1 -->
+
+      <!-- Text -->
+      <SolidColorBrush x:Key="PrimaryTextBrush" Color="#EDFFFFFF" />      <!-- ink 0.93 -->
+      <SolidColorBrush x:Key="SecondaryTextBrush" Color="#8CFFFFFF" />    <!-- ink 0.55 -->
+      <SolidColorBrush x:Key="TertiaryTextBrush" Color="#54FFFFFF" />     <!-- ink 0.33 -->
+
+      <!-- Controls -->
+      <SolidColorBrush x:Key="CheckboxFillBrush" Color="#99FFFFFF" />     <!-- ink 0.6 -->
+      <SolidColorBrush x:Key="CheckboxHoverBrush" Color="#CCFFFFFF" />    <!-- ink 0.8 -->
+      <SolidColorBrush x:Key="ChipBrush" Color="#0AFFFFFF" />             <!-- ink 0.04 -->
+      <SolidColorBrush x:Key="ChipHoverBrush" Color="#14FFFFFF" />        <!-- ink 0.08 -->
+      <SolidColorBrush x:Key="ChipSelectedBrush" Color="#29FFFFFF" />     <!-- ink 0.16 -->
+
+      <!-- Chart -->
+      <SolidColorBrush x:Key="ChartBarBrush" Color="#38FFFFFF" />         <!-- ink 0.22 -->
+      <SolidColorBrush x:Key="ChartTodayBrush" Color="#8CFFFFFF" />       <!-- ink 0.55 -->
+      <SolidColorBrush x:Key="ChartHoverBrush" Color="#D9FFFFFF" />       <!-- ink 0.85 -->
+
+      <!-- Meaning -->
+      <SolidColorBrush x:Key="GreenBrush" Color="#34C77B" />
+      <SolidColorBrush x:Key="RedBrush" Color="#EF5B53" />
+      <SolidColorBrush x:Key="BlueBrush" Color="#4C8DF6" />
+
+      <!-- Priority tints (High is Red, None is TertiaryText) -->
+      <SolidColorBrush x:Key="PriorityMediumBrush" Color="#9EFFFFFF" />   <!-- ink 0.62 -->
+      <SolidColorBrush x:Key="PriorityLowBrush" Color="#5CFFFFFF" />      <!-- ink 0.36 -->
+
+      <!--
+        Neutral accent: ink 0.6, stepping by 0.1. Dark-theme controls fill with Light2 and put
+        black text on it, and colour accent text with Light3.
+      -->
+      <Color x:Key="SystemAccentColor">#99FFFFFF</Color>       <!-- ink 0.6 -->
+      <Color x:Key="SystemAccentColorLight1">#B3FFFFFF</Color> <!-- ink 0.7 -->
+      <Color x:Key="SystemAccentColorLight2">#CCFFFFFF</Color> <!-- ink 0.8 -->
+      <Color x:Key="SystemAccentColorLight3">#E6FFFFFF</Color> <!-- ink 0.9 -->
+      <Color x:Key="SystemAccentColorDark1">#80FFFFFF</Color>  <!-- ink 0.5 -->
+      <Color x:Key="SystemAccentColorDark2">#66FFFFFF</Color>  <!-- ink 0.4 -->
+      <Color x:Key="SystemAccentColorDark3">#4DFFFFFF</Color>  <!-- ink 0.3 -->
+    </ResourceDictionary>
+
+    <ResourceDictionary x:Key="Light">
+      <!-- Surfaces -->
+      <SolidColorBrush x:Key="BackgroundBrush" Color="#FBFBFC" />
+      <SolidColorBrush x:Key="PanelBrush" Color="#F2F2F4" />
+      <SolidColorBrush x:Key="RaisedBrush" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="RaisedHoverBrush" Color="#FAFAFB" />
+      <SolidColorBrush x:Key="RaisedSelectedBrush" Color="#F4F5F8" />
+
+      <!-- Lines and states -->
+      <SolidColorBrush x:Key="SeparatorBrush" Color="#14000000" />        <!-- ink 0.08 -->
+      <SolidColorBrush x:Key="StrongSeparatorBrush" Color="#24000000" />  <!-- ink 0.14 -->
+      <SolidColorBrush x:Key="HoverBrush" Color="#0A000000" />            <!-- ink 0.04 -->
+      <SolidColorBrush x:Key="SelectionBrush" Color="#12000000" />        <!-- ink 0.07 -->
+      <SolidColorBrush x:Key="FocusRingBrush" Color="#38000000" />        <!-- ink 0.22 -->
+      <SolidColorBrush x:Key="SelectedOutlineBrush" Color="#33000000" />  <!-- ink 0.2 -->
+      <SolidColorBrush x:Key="TrackBrush" Color="#14000000" />            <!-- ink 0.08 -->
+
+      <!-- Text -->
+      <SolidColorBrush x:Key="PrimaryTextBrush" Color="#DE000000" />      <!-- ink 0.87 -->
+      <SolidColorBrush x:Key="SecondaryTextBrush" Color="#85000000" />    <!-- ink 0.52 -->
+      <SolidColorBrush x:Key="TertiaryTextBrush" Color="#52000000" />     <!-- ink 0.32 -->
+
+      <!-- Controls -->
+      <SolidColorBrush x:Key="CheckboxFillBrush" Color="#38000000" />     <!-- ink 0.22 -->
+      <SolidColorBrush x:Key="CheckboxHoverBrush" Color="#5C000000" />    <!-- ink 0.36 -->
+      <SolidColorBrush x:Key="ChipBrush" Color="#0A000000" />             <!-- ink 0.04 -->
+      <SolidColorBrush x:Key="ChipHoverBrush" Color="#12000000" />        <!-- ink 0.07 -->
+      <SolidColorBrush x:Key="ChipSelectedBrush" Color="#1F000000" />     <!-- ink 0.12 -->
+
+      <!-- Chart -->
+      <SolidColorBrush x:Key="ChartBarBrush" Color="#29000000" />         <!-- ink 0.16 -->
+      <SolidColorBrush x:Key="ChartTodayBrush" Color="#73000000" />       <!-- ink 0.45 -->
+      <SolidColorBrush x:Key="ChartHoverBrush" Color="#CC000000" />       <!-- ink 0.8 -->
+
+      <!-- Meaning: slightly deeper on white to keep contrast -->
+      <SolidColorBrush x:Key="GreenBrush" Color="#1FA463" />
+      <SolidColorBrush x:Key="RedBrush" Color="#E0443C" />
+      <SolidColorBrush x:Key="BlueBrush" Color="#2F6FE4" />
+
+      <!-- Priority tints (High is Red, None is TertiaryText) -->
+      <SolidColorBrush x:Key="PriorityMediumBrush" Color="#8C000000" />   <!-- ink 0.55 -->
+      <SolidColorBrush x:Key="PriorityLowBrush" Color="#52000000" />      <!-- ink 0.32 -->
+
+      <!--
+        Neutral accent: ink 0.22, lighter steps by 0.04 to 0.06. Light-theme controls fill with Dark1
+        and put white text on it, and colour accent text with Dark2, so the darker steps start at 0.6.
+      -->
+      <Color x:Key="SystemAccentColor">#38000000</Color>       <!-- ink 0.22 -->
+      <Color x:Key="SystemAccentColorLight1">#29000000</Color> <!-- ink 0.16 -->
+      <Color x:Key="SystemAccentColorLight2">#1F000000</Color> <!-- ink 0.12 -->
+      <Color x:Key="SystemAccentColorLight3">#14000000</Color> <!-- ink 0.08 -->
+      <Color x:Key="SystemAccentColorDark1">#99000000</Color>  <!-- ink 0.6 -->
+      <Color x:Key="SystemAccentColorDark2">#B3000000</Color>  <!-- ink 0.7 -->
+      <Color x:Key="SystemAccentColorDark3">#CC000000</Color>  <!-- ink 0.8 -->
+    </ResourceDictionary>
+  </ResourceDictionary.ThemeDictionaries>
+</ResourceDictionary>
