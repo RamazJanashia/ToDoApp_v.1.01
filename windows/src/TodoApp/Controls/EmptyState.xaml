@@ -1,0 +1,25 @@
+<!-- A quiet icon, title and message for an empty list (EmptyStateView in Components.swift). -->
+<UserControl
+    x:Class="TodoApp.EmptyState"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    IsTabStop="False">
+  <StackPanel MaxWidth="260" Padding="0,40" Spacing="10">
+    <FontIcon x:Name="IconGlyph" FontSize="26" HorizontalAlignment="Center" Foreground="{ThemeResource TertiaryTextBrush}" />
+    <TextBlock
+        x:Name="TitleText"
+        Style="{StaticResource BodyText}"
+        FontWeight="Medium"
+        Foreground="{ThemeResource SecondaryTextBrush}"
+        HorizontalAlignment="Center"
+        TextAlignment="Center"
+        TextWrapping="Wrap" />
+    <TextBlock
+        x:Name="MessageText"
+        Style="{StaticResource CaptionText}"
+        Foreground="{ThemeResource TertiaryTextBrush}"
+        HorizontalAlignment="Center"
+        TextAlignment="Center"
+        TextWrapping="Wrap" />
+  </StackPanel>
+</UserControl>

@@ -1,0 +1,40 @@
+<UserControl
+    x:Class="TodoApp.TaskListView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:TodoApp"
+    IsTabStop="False">
+  <UserControl.Resources>
+    <DataTemplate x:Key="RowTemplate">
+      <local:TaskRow />
+    </DataTemplate>
+
+    <!-- Section header (ListSectionHeader): the title, red when it warns, then the detail in tertiary ink. -->
+    <DataTemplate x:Key="HeaderTemplate">
+      <StackPanel Orientation="Horizontal" Spacing="8" Padding="0,22,0,4">
+        <TextBlock Style="{StaticResource AppTextBase}" FontSize="13" FontWeight="SemiBold" Opacity="0.85" VerticalAlignment="Bottom" />
+        <TextBlock Style="{StaticResource AppTextBase}" FontSize="13" FontWeight="SemiBold" Foreground="{ThemeResource RedBrush}" VerticalAlignment="Bottom" Visibility="Collapsed" />
+        <TextBlock Style="{StaticResource CaptionText}" Foreground="{ThemeResource TertiaryTextBrush}" VerticalAlignment="Bottom" />
+      </StackPanel>
+    </DataTemplate>
+  </UserControl.Resources>
+
+  <!-- A tab stop, so a click on a row can take the keyboard back from a text field (Mac: endEditing). -->
+  <ScrollViewer
+      x:Name="Scroller"
+      IsTabStop="True"
+      HorizontalScrollMode="Disabled"
+      HorizontalScrollBarVisibility="Disabled"
+      VerticalScrollBarVisibility="Auto">
+    <!-- Capped at the reading width and centred, 32 from the edges. -->
+    <StackPanel x:Name="Body" MaxWidth="860" Margin="32,6,32,48">
+      <ItemsRepeater x:Name="Repeater">
+        <ItemsRepeater.Layout>
+          <StackLayout />
+        </ItemsRepeater.Layout>
+      </ItemsRepeater>
+      <local:EmptyState x:Name="Empty" HorizontalAlignment="Center" Visibility="Collapsed" />
+      <local:NewTaskComposer x:Name="Composer" />
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

@@ -1,0 +1,22 @@
+<UserControl
+    x:Class="TodoApp.CenterView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:TodoApp"
+    IsTabStop="False">
+  <Grid Background="{ThemeResource BackgroundBrush}">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+    </Grid.RowDefinitions>
+
+    <local:CenterHeader x:Name="Header" />
+    <local:TaskListView x:Name="TaskList" Grid.Row="1" />
+
+    <!-- Placeholders until the board, calendar and dashboard views exist (Tasks 17–19). -->
+    <Grid x:Name="BoardHost" Grid.Row="1" Visibility="Collapsed" />
+    <Grid x:Name="CalendarHost" Grid.Row="1" Visibility="Collapsed" />
+    <!-- The dashboard replaces the header as well. -->
+    <Grid x:Name="DashboardHost" Grid.RowSpan="2" Visibility="Collapsed" />
+  </Grid>
+</UserControl>

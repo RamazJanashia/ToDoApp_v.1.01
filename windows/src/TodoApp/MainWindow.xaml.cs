@@ -3,10 +3,15 @@ using Microsoft.UI;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using TodoApp.State;
 using Windows.Graphics;
 using Windows.UI;
+using CoreVirtualKeyStates = Windows.UI.Core.CoreVirtualKeyStates;
+using InputKeyboardSource = Microsoft.UI.Input.InputKeyboardSource;
+using VirtualKey = Windows.System.VirtualKey;
 
 namespace TodoApp;
 
@@ -22,6 +27,7 @@ public sealed partial class MainWindow : Window
 
     private readonly DispatcherQueueTimer _minuteTimer;
     private readonly SidebarView _sidebar;
+    private readonly CenterView _center;
     private bool _renderQueued;
     private double _sidebarWidth;
     private double _inspectorWidth;
@@ -50,6 +56,9 @@ public sealed partial class MainWindow : Window
 
         _sidebar = new SidebarView();
         SidebarHost.Content = _sidebar;
+        _center = new CenterView();
+        CenterHost.Content = _center;
+        Root.PreviewKeyDown += OnPreviewKeyDown;
 
         State.Changed += (_, _) => RenderSoon();
         State.ProjectEditorRequested += async (_, projectId) => await ShowDialogAsync(root => ProjectEditorDialog.ShowAsync(root, State, projectId));
@@ -122,6 +131,7 @@ public sealed partial class MainWindow : Window
         });
         RenderColumns();
         _sidebar.Render(State);
+        _center.Render(State);
 
         if (AppWindow.Presenter is OverlappedPresenter presenter)
         {
@@ -132,6 +142,40 @@ public sealed partial class MainWindow : Window
             presenter.PreferredMinimumHeight = Pixels(MinimumHeight) + frameHeight;
         }
     }
+
+    /// <summary>True when keystrokes are typing: a text field, search box, number box, password or rich text has focus.</summary>
+    internal static bool IsTextInputFocused(XamlRoot? xamlRoot) =>
+        xamlRoot is not null
+        && FocusManager.GetFocusedElement(xamlRoot) is TextBox or AutoSuggestBox or NumberBox or PasswordBox or RichEditBox;
+
+    /// <summary>
+    /// The bare keys (arrows, Space, Enter, Delete, Backspace, Esc) act on tasks, unless a text input has focus, a
+    /// modifier is held, a dialog is open or the Dashboard is showing (AppState.HandleKey decides).
+    /// </summary>
+    private void OnPreviewKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        KeyCommand? command = e.Key switch
+        {
+            VirtualKey.Down => KeyCommand.Down,
+            VirtualKey.Up => KeyCommand.Up,
+            VirtualKey.Space => KeyCommand.Space,
+            VirtualKey.Enter => KeyCommand.Enter,
+            VirtualKey.Delete or VirtualKey.Back => KeyCommand.Delete,
+            VirtualKey.Escape => KeyCommand.Escape,
+            _ => null,
+        };
+        if (command is not { } key) return;
+
+        // Shift doesn't count, as on the Mac.
+        var hasModifiers = IsKeyDown(VirtualKey.Control)
+            || IsKeyDown(VirtualKey.Menu)
+            || IsKeyDown(VirtualKey.LeftWindows)
+            || IsKeyDown(VirtualKey.RightWindows);
+        if (State.HandleKey(key, IsTextInputFocused(Root.XamlRoot), hasModifiers, Dialogs.IsOpen)) e.Handled = true;
+    }
+
+    private static bool IsKeyDown(VirtualKey key) =>
+        InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(CoreVirtualKeyStates.Down);
 
     /// <summary>Runs a dialog on the window's content; a failure is logged rather than ending the app.</summary>
     private async Task ShowDialogAsync(Func<XamlRoot, Task> show)
