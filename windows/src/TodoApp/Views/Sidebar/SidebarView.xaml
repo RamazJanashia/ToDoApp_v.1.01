@@ -1,0 +1,57 @@
+<UserControl
+    x:Class="TodoApp.SidebarView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:TodoApp"
+    IsTabStop="False">
+  <Grid x:Name="Root" Background="{ThemeResource BackgroundBrush}">
+    <ScrollViewer VerticalScrollBarVisibility="Hidden" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel Padding="12,20" Spacing="4">
+        <TextBlock Style="{StaticResource SectionHeaderText}" Text="WORKSPACE" Margin="10,0,0,8" />
+
+        <ItemsRepeater x:Name="WorkspaceRepeater">
+          <ItemsRepeater.Layout>
+            <StackLayout Spacing="4" />
+          </ItemsRepeater.Layout>
+          <ItemsRepeater.ItemTemplate>
+            <DataTemplate>
+              <local:SidebarRow />
+            </DataTemplate>
+          </ItemsRepeater.ItemTemplate>
+        </ItemsRepeater>
+
+        <Grid Margin="10,26,2,4">
+          <TextBlock Style="{StaticResource SectionHeaderText}" Text="PROJECTS" VerticalAlignment="Center" />
+          <Button
+              x:Name="NewProjectButton"
+              Style="{StaticResource IconButtonStyle}"
+              HorizontalAlignment="Right"
+              FontSize="12"
+              FontWeight="Medium"
+              ToolTipService.ToolTip="New Project (Ctrl+Shift+N)"
+              AutomationProperties.Name="New Project"
+              Click="OnNewProject" />
+        </Grid>
+
+        <ItemsRepeater x:Name="ProjectsRepeater">
+          <ItemsRepeater.Layout>
+            <StackLayout Spacing="4" />
+          </ItemsRepeater.Layout>
+          <ItemsRepeater.ItemTemplate>
+            <DataTemplate>
+              <local:SidebarRow />
+            </DataTemplate>
+          </ItemsRepeater.ItemTemplate>
+        </ItemsRepeater>
+
+        <TextBlock
+            x:Name="EmptyHint"
+            Style="{StaticResource CaptionText}"
+            Foreground="{ThemeResource TertiaryTextBrush}"
+            Margin="10,4,0,0"
+            TextWrapping="Wrap"
+            Text="Create a project to group related tasks." />
+      </StackPanel>
+    </ScrollViewer>
+  </Grid>
+</UserControl>

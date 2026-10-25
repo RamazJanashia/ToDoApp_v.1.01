@@ -21,6 +21,7 @@ public sealed partial class MainWindow : Window
     private const int MinimumHeight = 600;
 
     private readonly DispatcherQueueTimer _minuteTimer;
+    private readonly SidebarView _sidebar;
     private bool _renderQueued;
     private double _sidebarWidth;
     private double _inspectorWidth;
@@ -47,7 +48,12 @@ public sealed partial class MainWindow : Window
         InspectorResizer.CurrentWidth = () => _inspectorWidth;
         InspectorResizer.WidthDragged += (_, width) => State.InspectorWidth = width;
 
+        _sidebar = new SidebarView();
+        SidebarHost.Content = _sidebar;
+
         State.Changed += (_, _) => RenderSoon();
+        State.ProjectEditorRequested += async (_, projectId) => await ShowDialogAsync(root => ProjectEditorDialog.ShowAsync(root, State, projectId));
+        State.ProjectDeletionRequested += async (_, project) => await ShowDialogAsync(root => Dialogs.ConfirmProjectDeletionAsync(root, State, project));
         Columns.SizeChanged += (_, _) => RenderColumns();
         Root.ActualThemeChanged += (_, _) => ColorCaptionButtons();
         Root.Loaded += (_, _) =>
@@ -115,6 +121,7 @@ public sealed partial class MainWindow : Window
             _ => "circle.lefthalf.filled",
         });
         RenderColumns();
+        _sidebar.Render(State);
 
         if (AppWindow.Presenter is OverlappedPresenter presenter)
         {
@@ -123,6 +130,20 @@ public sealed partial class MainWindow : Window
             var frameHeight = AppWindow.Size.Height - AppWindow.ClientSize.Height;
             presenter.PreferredMinimumWidth = Pixels(ColumnLayout.MinimumWidth(State.IsSidebarVisible, State.IsInspectorVisible)) + frameWidth;
             presenter.PreferredMinimumHeight = Pixels(MinimumHeight) + frameHeight;
+        }
+    }
+
+    /// <summary>Runs a dialog on the window's content; a failure is logged rather than ending the app.</summary>
+    private async Task ShowDialogAsync(Func<XamlRoot, Task> show)
+    {
+        if (Root.XamlRoot is not { } xamlRoot) return;
+        try
+        {
+            await show(xamlRoot);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("A dialog failed", ex);
         }
     }
 
