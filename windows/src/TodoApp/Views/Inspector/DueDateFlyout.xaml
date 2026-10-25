@@ -1,0 +1,106 @@
+<!-- Quick picks, a month calendar and an optional time of day (DueDatePopover in SchedulePopovers.swift). -->
+<UserControl
+    x:Class="TodoApp.DueDateFlyout"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:TodoApp"
+    IsTabStop="False">
+  <UserControl.Resources>
+    <!-- QuickDateChip: icon over title on a raised tile; selection fill and primary ink under the pointer. -->
+    <Style x:Key="QuickChipStyle" TargetType="Button">
+      <Setter Property="Height" Value="46" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="Foreground" Value="{ThemeResource SecondaryTextBrush}" />
+      <Setter Property="UseSystemFocusVisuals" Value="True" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Grid x:Name="Tile" Background="{ThemeResource RaisedBrush}" CornerRadius="8">
+              <VisualStateManager.VisualStateGroups>
+                <VisualStateGroup x:Name="CommonStates">
+                  <VisualState x:Name="Normal" />
+                  <VisualState x:Name="PointerOver">
+                    <VisualState.Setters>
+                      <Setter Target="Tile.Background" Value="{ThemeResource SelectionBrush}" />
+                      <Setter Target="Presenter.Foreground" Value="{ThemeResource PrimaryTextBrush}" />
+                    </VisualState.Setters>
+                  </VisualState>
+                  <VisualState x:Name="Pressed">
+                    <VisualState.Setters>
+                      <Setter Target="Tile.Background" Value="{ThemeResource SelectionBrush}" />
+                      <Setter Target="Presenter.Foreground" Value="{ThemeResource PrimaryTextBrush}" />
+                    </VisualState.Setters>
+                  </VisualState>
+                  <VisualState x:Name="Disabled" />
+                </VisualStateGroup>
+              </VisualStateManager.VisualStateGroups>
+              <ContentPresenter
+                  x:Name="Presenter"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Center"
+                  Content="{TemplateBinding Content}"
+                  Foreground="{TemplateBinding Foreground}" />
+            </Grid>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+  </UserControl.Resources>
+
+  <StackPanel Width="270" Padding="14" Spacing="12">
+    <Grid ColumnSpacing="6">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="*" />
+      </Grid.ColumnDefinitions>
+      <Button x:Name="TodayChip" Style="{StaticResource QuickChipStyle}" AutomationProperties.Name="Today">
+        <StackPanel Spacing="4">
+          <TextBlock x:Name="TodayGlyph" FontFamily="{ThemeResource SymbolThemeFontFamily}" FontSize="13" HorizontalAlignment="Center" />
+          <TextBlock FontSize="11" HorizontalAlignment="Center" Text="Today" />
+        </StackPanel>
+      </Button>
+      <Button x:Name="TomorrowChip" Grid.Column="1" Style="{StaticResource QuickChipStyle}" AutomationProperties.Name="Tomorrow">
+        <StackPanel Spacing="4">
+          <TextBlock x:Name="TomorrowGlyph" FontFamily="{ThemeResource SymbolThemeFontFamily}" FontSize="13" HorizontalAlignment="Center" />
+          <TextBlock FontSize="11" HorizontalAlignment="Center" Text="Tomorrow" />
+        </StackPanel>
+      </Button>
+      <Button x:Name="NextWeekChip" Grid.Column="2" Style="{StaticResource QuickChipStyle}" AutomationProperties.Name="Next week">
+        <StackPanel Spacing="4">
+          <TextBlock x:Name="NextWeekGlyph" FontFamily="{ThemeResource SymbolThemeFontFamily}" FontSize="13" HorizontalAlignment="Center" />
+          <TextBlock FontSize="11" HorizontalAlignment="Center" Text="Next week" />
+        </StackPanel>
+      </Button>
+    </Grid>
+
+    <local:MiniMonthPicker x:Name="Month" />
+
+    <Rectangle Height="1" Fill="{ThemeResource SeparatorBrush}" />
+
+    <!-- Off and disabled without a due date. The picker is 242 wide, so it gets its own line under the switch. -->
+    <ToggleSwitch
+        x:Name="TimeSwitch"
+        MinWidth="0"
+        FontSize="13"
+        OnContent="Time"
+        OffContent="Time"
+        AutomationProperties.Name="Time" />
+    <TimePicker
+        x:Name="TimeField"
+        HorizontalAlignment="Stretch"
+        Visibility="Collapsed"
+        AutomationProperties.Name="Time" />
+
+    <local:OptionList
+        x:Name="RemoveOption"
+        Margin="-6,0"
+        Padding="0"
+        Visibility="Collapsed"
+        PrimaryBrush="{ThemeResource PrimaryTextBrush}"
+        SecondaryBrush="{ThemeResource SecondaryTextBrush}"
+        TertiaryBrush="{ThemeResource TertiaryTextBrush}"
+        HoverBrush="{ThemeResource SelectionBrush}"
+        SeparatorBrush="{ThemeResource SeparatorBrush}" />
+  </StackPanel>
+</UserControl>

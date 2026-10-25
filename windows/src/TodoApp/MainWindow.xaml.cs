@@ -28,6 +28,7 @@ public sealed partial class MainWindow : Window
     private readonly DispatcherQueueTimer _minuteTimer;
     private readonly SidebarView _sidebar;
     private readonly CenterView _center;
+    private readonly InspectorView _inspector;
     private bool _renderQueued;
     private double _sidebarWidth;
     private double _inspectorWidth;
@@ -58,9 +59,12 @@ public sealed partial class MainWindow : Window
         SidebarHost.Content = _sidebar;
         _center = new CenterView();
         CenterHost.Content = _center;
+        _inspector = new InspectorView();
+        InspectorHost.Content = _inspector;
         Root.PreviewKeyDown += OnPreviewKeyDown;
 
         State.Changed += (_, _) => RenderSoon();
+        State.TitleFocusRequested += (_, _) => _inspector.FocusTitle();
         State.ProjectEditorRequested += async (_, projectId) => await ShowDialogAsync(root => ProjectEditorDialog.ShowAsync(root, State, projectId));
         State.ProjectDeletionRequested += async (_, project) => await ShowDialogAsync(root => Dialogs.ConfirmProjectDeletionAsync(root, State, project));
         Columns.SizeChanged += (_, _) => RenderColumns();
@@ -132,6 +136,7 @@ public sealed partial class MainWindow : Window
         RenderColumns();
         _sidebar.Render(State);
         _center.Render(State);
+        if (State.IsInspectorVisible) _inspector.Render(State);
 
         if (AppWindow.Presenter is OverlappedPresenter presenter)
         {

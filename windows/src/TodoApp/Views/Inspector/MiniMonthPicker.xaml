@@ -1,0 +1,113 @@
+<!--
+  A compact month calendar (MiniMonthPicker and MiniDayButton in SchedulePopovers.swift). Unlike the system date
+  picker it can show no selection, so an undated task can be given any day, today included, in one click.
+-->
+<UserControl
+    x:Class="TodoApp.MiniMonthPicker"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    IsTabStop="False">
+  <UserControl.Resources>
+    <!-- A 28×26 day cell: a 26 px selection-tinted disc under the pointer; the content draws the rest. -->
+    <Style x:Key="DayButtonStyle" TargetType="Button">
+      <Setter Property="Width" Value="28" />
+      <Setter Property="Height" Value="26" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+      <Setter Property="UseSystemFocusVisuals" Value="True" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Grid Background="Transparent">
+              <VisualStateManager.VisualStateGroups>
+                <VisualStateGroup x:Name="CommonStates">
+                  <VisualState x:Name="Normal" />
+                  <VisualState x:Name="PointerOver">
+                    <VisualState.Setters>
+                      <Setter Target="HoverDisc.Opacity" Value="1" />
+                    </VisualState.Setters>
+                  </VisualState>
+                  <VisualState x:Name="Pressed">
+                    <VisualState.Setters>
+                      <Setter Target="HoverDisc.Opacity" Value="1" />
+                    </VisualState.Setters>
+                  </VisualState>
+                  <VisualState x:Name="Disabled" />
+                </VisualStateGroup>
+              </VisualStateManager.VisualStateGroups>
+              <Ellipse x:Name="HoverDisc" Width="26" Height="26" Fill="{ThemeResource SelectionBrush}" Opacity="0" />
+              <ContentPresenter Content="{TemplateBinding Content}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+            </Grid>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- The chosen day: a filled primary-ink disc with the number in the background colour. -->
+    <Style x:Key="SelectedDiscStyle" TargetType="Ellipse">
+      <Setter Property="Width" Value="26" />
+      <Setter Property="Height" Value="26" />
+      <Setter Property="Fill" Value="{ThemeResource PrimaryTextBrush}" />
+    </Style>
+
+    <Style x:Key="DayTextStyle" TargetType="TextBlock" BasedOn="{StaticResource AppTextBase}">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style x:Key="OutsideDayTextStyle" TargetType="TextBlock" BasedOn="{StaticResource DayTextStyle}">
+      <Setter Property="Foreground" Value="{ThemeResource TertiaryTextBrush}" />
+    </Style>
+    <Style x:Key="TodayTextStyle" TargetType="TextBlock" BasedOn="{StaticResource DayTextStyle}">
+      <Setter Property="Foreground" Value="{ThemeResource RedBrush}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style x:Key="SelectedDayTextStyle" TargetType="TextBlock" BasedOn="{StaticResource DayTextStyle}">
+      <Setter Property="Foreground" Value="{ThemeResource BackgroundBrush}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <Style x:Key="WeekdayTextStyle" TargetType="TextBlock" BasedOn="{StaticResource AppTextBase}">
+      <Setter Property="FontSize" Value="10.5" />
+      <Setter Property="FontWeight" Value="Medium" />
+      <Setter Property="Foreground" Value="{ThemeResource TertiaryTextBrush}" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+    </Style>
+  </UserControl.Resources>
+
+  <StackPanel Spacing="6">
+    <Grid ColumnSpacing="2">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="Auto" />
+        <ColumnDefinition Width="Auto" />
+      </Grid.ColumnDefinitions>
+      <TextBlock
+          x:Name="MonthTitle"
+          Style="{StaticResource AppTextBase}"
+          FontSize="13"
+          FontWeight="SemiBold"
+          VerticalAlignment="Center"
+          MaxLines="1"
+          TextTrimming="CharacterEllipsis" />
+      <Button
+          x:Name="PreviousButton"
+          Grid.Column="1"
+          Style="{StaticResource IconButtonStyle}"
+          FontSize="11"
+          ToolTipService.ToolTip="Previous Month"
+          AutomationProperties.Name="Previous Month" />
+      <Button
+          x:Name="NextButton"
+          Grid.Column="2"
+          Style="{StaticResource IconButtonStyle}"
+          FontSize="11"
+          ToolTipService.ToolTip="Next Month"
+          AutomationProperties.Name="Next Month" />
+    </Grid>
+
+    <Grid x:Name="WeekdayRow" />
+
+    <Grid x:Name="DaysGrid" RowSpacing="2" />
+  </StackPanel>
+</UserControl>
