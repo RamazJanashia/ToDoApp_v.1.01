@@ -39,6 +39,7 @@ public sealed partial class MainWindow : Window
         ArgumentNullException.ThrowIfNull(state);
         State = state;
         InitializeComponent();
+        WindowsShell.WindowHandle = Handle;
 
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(TitleBarArea);

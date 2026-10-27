@@ -182,7 +182,8 @@
           </TextBox.Resources>
         </TextBox>
 
-        <!-- Task 16 adds the subtasks and attachments sections here, between the notes and the footer. -->
+        <local:SubtasksSection x:Name="Subtasks" />
+        <local:AttachmentsSection x:Name="AttachmentList" />
 
         <Rectangle Height="1" Margin="0,30,0,0" Fill="{ThemeResource SeparatorBrush}" />
         <Grid Margin="0,10,0,0" ColumnSpacing="2">

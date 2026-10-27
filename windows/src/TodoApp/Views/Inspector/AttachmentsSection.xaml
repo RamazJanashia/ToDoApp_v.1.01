@@ -1,0 +1,112 @@
+<!-- The "Attachments" part of the task details (AttachmentsSection in SubtasksAndAttachments.swift). -->
+<UserControl
+    x:Class="TodoApp.AttachmentsSection"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    IsTabStop="False">
+  <UserControl.Resources>
+    <SolidColorBrush x:Key="TextControlBackground" Color="Transparent" />
+    <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent" />
+    <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent" />
+    <SolidColorBrush x:Key="TextControlBorderBrush" Color="Transparent" />
+    <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent" />
+    <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="Transparent" />
+    <Thickness x:Key="TextControlBorderThemeThickness">0</Thickness>
+    <Thickness x:Key="TextControlBorderThemeThicknessFocused">0</Thickness>
+  </UserControl.Resources>
+
+  <Grid x:Name="Root" AllowDrop="True" Background="Transparent">
+    <!-- With attachments listed, a drag over the section tints the whole of it. -->
+    <Border
+        x:Name="TargetFill"
+        Margin="-8,0"
+        CornerRadius="8"
+        Background="{ThemeResource BlueBrush}"
+        Opacity="0.08"
+        Visibility="Collapsed"
+        IsHitTestVisible="False" />
+
+    <StackPanel>
+      <Grid Margin="0,26,0,6">
+        <TextBlock Style="{StaticResource SectionHeaderText}" VerticalAlignment="Center" Text="ATTACHMENTS" />
+        <StackPanel Orientation="Horizontal" Spacing="2" HorizontalAlignment="Right">
+          <Button
+              x:Name="AttachButton"
+              Style="{StaticResource IconButtonStyle}"
+              FontSize="13"
+              ToolTipService.ToolTip="Attach File…"
+              AutomationProperties.Name="Attach file" />
+          <Button
+              x:Name="LinkButton"
+              Style="{StaticResource IconButtonStyle}"
+              FontSize="13"
+              ToolTipService.ToolTip="Add Link"
+              AutomationProperties.Name="Add link" />
+        </StackPanel>
+      </Grid>
+
+      <StackPanel x:Name="Rows" />
+
+      <Grid x:Name="LinkPanel" Height="36" Visibility="Collapsed">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="30" />
+          <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+        <FontIcon
+            x:Name="LinkFieldIcon"
+            FontSize="12"
+            Foreground="{ThemeResource TertiaryTextBrush}"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center" />
+        <TextBox
+            x:Name="LinkBox"
+            Grid.Column="1"
+            PlaceholderText="Paste a link and press Enter"
+            PlaceholderForeground="{ThemeResource TertiaryTextBrush}"
+            Foreground="{ThemeResource PrimaryTextBrush}"
+            FontSize="13"
+            AcceptsReturn="False"
+            TextWrapping="NoWrap"
+            BorderThickness="0"
+            Background="Transparent"
+            Padding="0"
+            MinHeight="0"
+            VerticalAlignment="Center"
+            AutomationProperties.Name="Link address" />
+      </Grid>
+      <TextBlock
+          x:Name="InvalidText"
+          Style="{StaticResource SmallText}"
+          Foreground="{ThemeResource RedBrush}"
+          Margin="40,0,0,0"
+          Text="That doesn’t look like a web address."
+          Visibility="Collapsed" />
+
+      <Grid x:Name="Zone" Margin="0,4,0,0" MinHeight="54" Visibility="Collapsed">
+        <Rectangle
+            RadiusX="8"
+            RadiusY="8"
+            Stroke="{ThemeResource StrongSeparatorBrush}"
+            StrokeThickness="1"
+            StrokeDashArray="4,4"
+            IsHitTestVisible="False" />
+        <Rectangle
+            x:Name="ZoneTarget"
+            RadiusX="8"
+            RadiusY="8"
+            Stroke="{ThemeResource BlueBrush}"
+            StrokeThickness="1"
+            StrokeDashArray="4,4"
+            Opacity="0.7"
+            Visibility="Collapsed"
+            IsHitTestVisible="False" />
+        <TextBlock
+            Style="{StaticResource CaptionText}"
+            Foreground="{ThemeResource TertiaryTextBrush}"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            Text="Drop files here, or use the buttons above." />
+      </Grid>
+    </StackPanel>
+  </Grid>
+</UserControl>
