@@ -104,8 +104,20 @@ public sealed partial class AttachmentRow : UserControl
     private void Open()
     {
         if (_attachment is not { } attachment) return;
-        var target = attachment.Kind == AttachmentKind.Link ? attachment.Location : _path;
+        var target = attachment.Kind == AttachmentKind.Link ? attachment.Location : InsideStorage(_path);
         if (target is not null) _ = WindowsShell.OpenAsync(target);
+    }
+
+    /// <summary>
+    /// The path when it really is inside the attachments folder, otherwise null: a hand-edited tasks.json can hold a
+    /// location like "..\..\tool.exe", and an attachment must never open anything outside its own folder.
+    /// </summary>
+    private string? InsideStorage(string? path)
+    {
+        if (path is null || _state is not { } state) return null;
+        var root = Path.GetFullPath(state.Store.Attachments.Directory).TrimEnd('\\') + '\\';
+        var full = WindowsShell.LocalFile(path);
+        return full is not null && full.StartsWith(root, StringComparison.OrdinalIgnoreCase) ? full : null;
     }
 
     private void Remove()

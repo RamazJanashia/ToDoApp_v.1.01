@@ -21,21 +21,64 @@ public static class WindowsShell
     /// <summary>The main window's handle, which pickers need to show themselves over it. Set once by the window.</summary>
     public static IntPtr WindowHandle { get; set; }
 
-    /// <summary>Opens a file or web address with whatever Windows associates with it. Failures are logged.</summary>
+    /// <summary>
+    /// Opens a local file, or a web or mail address, with whatever Windows associates with it. A link can come from
+    /// a drop or a hand-edited tasks.json, so any other scheme (ms-msdt:, file://, a network share…) is refused.
+    /// Failures are logged without the full path or address.
+    /// </summary>
     public static Task OpenAsync(string pathOrUrl)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(pathOrUrl);
+        string target;
+        if (Uri.TryCreate(pathOrUrl, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" or "mailto")
+        {
+            target = uri.AbsoluteUri;
+        }
+        else if (LocalFile(pathOrUrl) is { } local)
+        {
+            target = local;
+        }
+        else
+        {
+            AppLog.Error("Refused to open an attachment that is neither a local file nor a web or mail address", null);
+            return Task.CompletedTask;
+        }
+
         try
         {
-            Process.Start(new ProcessStartInfo(pathOrUrl) { UseShellExecute = true })?.Dispose();
+            Process.Start(new ProcessStartInfo(target) { UseShellExecute = true })?.Dispose();
         }
         catch (Exception ex) when (ex is Win32Exception or FileNotFoundException or InvalidOperationException)
         {
-            AppLog.Error($"Couldn't open {pathOrUrl}", ex);
+            AppLog.Error($"Couldn't open {Describe(target)}", ex);
         }
 
         return Task.CompletedTask;
     }
+
+    /// <summary>
+    /// The full path when <paramref name="path"/> names a file on a local drive ("C:\…"), otherwise null. Normalising
+    /// first means "//server/share", "\\?\UNC\…", "..\" tricks and the like end up as what they really are, and
+    /// anything that isn't a drive-letter path is refused.
+    /// </summary>
+    internal static string? LocalFile(string path)
+    {
+        try
+        {
+            var full = Path.GetFullPath(path);
+            return full.Length >= 3 && char.IsAsciiLetter(full[0]) && full[1] == ':' && full[2] == '\\' ? full : null;
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException or System.Security.SecurityException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>What is safe to put in the log: a file's name, or an address's scheme and host.</summary>
+    private static string Describe(string target) =>
+        Uri.TryCreate(target, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" or "mailto"
+            ? uri.Scheme + "://" + uri.Host
+            : Path.GetFileName(target);
 
     /// <summary>Opens File Explorer with the file selected.</summary>
     public static void RevealInExplorer(string path)
@@ -47,7 +90,7 @@ public static class WindowsShell
         }
         catch (Exception ex) when (ex is Win32Exception or InvalidOperationException)
         {
-            AppLog.Error($"Couldn't show {path} in File Explorer", ex);
+            AppLog.Error($"Couldn't show {Path.GetFileName(path)} in File Explorer", ex);
         }
     }
 
