@@ -15,8 +15,9 @@
 
     <local:BoardView x:Name="Board" Grid.Row="1" Visibility="Collapsed" />
 
-    <!-- Placeholders until the calendar and dashboard views exist (Tasks 18–19). -->
-    <Grid x:Name="CalendarHost" Grid.Row="1" Visibility="Collapsed" />
+    <local:CalendarMonthView x:Name="MonthView" Grid.Row="1" Visibility="Collapsed" />
+
+    <!-- A placeholder until the dashboard exists (Task 19). -->
     <!-- The dashboard replaces the header as well. -->
     <Grid x:Name="DashboardHost" Grid.RowSpan="2" Visibility="Collapsed" />
   </Grid>

@@ -1,0 +1,56 @@
+<!-- A task on a calendar day (CalendarTaskChip in CalendarMonthView.swift): a coloured dot and the title. -->
+<UserControl
+    x:Class="TodoApp.CalendarChip"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    IsTabStop="False">
+  <Grid x:Name="Root" Background="Transparent" CanDrag="True">
+    <VisualStateManager.VisualStateGroups>
+      <VisualStateGroup x:Name="ChipStates">
+        <VisualState x:Name="ChipNormal" />
+        <VisualState x:Name="ChipHover">
+          <VisualState.Setters>
+            <Setter Target="Chrome.Background" Value="{ThemeResource ChipHoverBrush}" />
+          </VisualState.Setters>
+        </VisualState>
+        <VisualState x:Name="ChipSelected">
+          <VisualState.Setters>
+            <Setter Target="Chrome.Background" Value="{ThemeResource ChipSelectedBrush}" />
+          </VisualState.Setters>
+        </VisualState>
+      </VisualStateGroup>
+      <VisualStateGroup x:Name="TitleStates">
+        <VisualState x:Name="TitleOpen" />
+        <VisualState x:Name="TitleDone">
+          <VisualState.Setters>
+            <Setter Target="TitleText.Foreground" Value="{ThemeResource TertiaryTextBrush}" />
+            <Setter Target="TitleText.Opacity" Value="1" />
+          </VisualState.Setters>
+        </VisualState>
+      </VisualStateGroup>
+    </VisualStateManager.VisualStateGroups>
+
+    <Border
+        x:Name="Chrome"
+        CornerRadius="4"
+        Padding="5,2.5"
+        Background="{ThemeResource ChipBrush}">
+      <Grid ColumnSpacing="5">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+        <Ellipse x:Name="Dot" Width="5" Height="5" VerticalAlignment="Center" />
+        <TextBlock
+            x:Name="TitleText"
+            Grid.Column="1"
+            Style="{StaticResource AppTextBase}"
+            FontSize="11"
+            Foreground="{ThemeResource PrimaryTextBrush}"
+            Opacity="0.88"
+            TextWrapping="NoWrap"
+            TextTrimming="CharacterEllipsis" />
+      </Grid>
+    </Border>
+  </Grid>
+</UserControl>
