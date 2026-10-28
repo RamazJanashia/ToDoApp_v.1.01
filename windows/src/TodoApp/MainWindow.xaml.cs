@@ -146,8 +146,9 @@ public sealed partial class MainWindow : Window
         };
         SearchBox.GotFocus += (_, _) => PaintSearchBorder();
         SearchBox.LostFocus += (_, _) => PaintSearchBorder();
-        // Esc clears the search and gives the keys back to the list.
-        SearchBox.KeyDown += (_, e) =>
+        // Esc clears the search and gives the keys back to the list. The box handles Esc itself on the way up, so
+        // this listens on the way down.
+        SearchBox.PreviewKeyDown += (_, e) =>
         {
             if (e.Key != VirtualKey.Escape) return;
             e.Handled = true;
@@ -267,8 +268,12 @@ public sealed partial class MainWindow : Window
             || IsKeyDown(VirtualKey.Menu)
             || IsKeyDown(VirtualKey.LeftWindows)
             || IsKeyDown(VirtualKey.RightWindows);
-        if (State.HandleKey(key, IsTextInputFocused(Root.XamlRoot), hasModifiers, Dialogs.IsOpen)) e.Handled = true;
+        // An open flyout or menu owns the keys, like a dialog: Esc closes it and must not also clear the selection.
+        if (State.HandleKey(key, IsTextInputFocused(Root.XamlRoot), hasModifiers, Dialogs.IsOpen || IsPopupOpen())) e.Handled = true;
     }
+
+    private bool IsPopupOpen() =>
+        Root.XamlRoot is { } xamlRoot && VisualTreeHelper.GetOpenPopupsForXamlRoot(xamlRoot).Count > 0;
 
     private static bool IsKeyDown(VirtualKey key) =>
         InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(CoreVirtualKeyStates.Down);

@@ -22,6 +22,7 @@ public sealed partial class InspectorView : UserControl
     private AppState? _state;
     private Guid? _taskId;
     private bool _focusPending;
+    private DispatcherQueueTimer? _focusRetry;
 
     public InspectorView()
     {
@@ -131,6 +132,25 @@ public sealed partial class InspectorView : UserControl
         {
             if (TitleBox.IsLoaded) FocusTitleIfPending();
         });
+
+        // A request made from a double-click (a new task on a calendar day) loses the focus again to the click's own
+        // focus handling, which comes after this. One later look puts it back, unless the user is already typing
+        // somewhere else.
+        if (_focusRetry is null)
+        {
+            _focusRetry = DispatcherQueue.CreateTimer();
+            _focusRetry.Interval = TimeSpan.FromMilliseconds(250);
+            _focusRetry.IsRepeating = false;
+            _focusRetry.Tick += (_, _) =>
+            {
+                if (_taskId is null || Form.Visibility != Visibility.Visible || !TitleBox.IsLoaded) return;
+                // What holds the focus, not FocusState: a box can still report the focus it was given before the click took it.
+                if (ReferenceEquals(Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(XamlRoot), TitleBox) || MainWindow.IsTextInputFocused(XamlRoot)) return;
+                if (TitleBox.Focus(FocusState.Programmatic)) TitleBox.SelectAll();
+            };
+        }
+
+        _focusRetry.Start();
     }
 
     /// <summary>Saves what the user typed, without an undo step (the text box has its own).</summary>
