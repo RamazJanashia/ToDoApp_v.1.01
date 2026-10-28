@@ -1,0 +1,69 @@
+<!-- The overview (DashboardView in DashboardView.swift): today's load, recent momentum and where each project stands. -->
+<UserControl
+    x:Class="TodoApp.DashboardView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:TodoApp"
+    IsTabStop="False">
+  <Grid x:Name="Root" Background="{ThemeResource BackgroundBrush}">
+    <ScrollViewer
+        x:Name="Scroller"
+        VerticalScrollBarVisibility="Auto"
+        HorizontalScrollMode="Disabled"
+        HorizontalScrollBarVisibility="Disabled">
+      <!-- Its width is set in code: the window's, less the margins, up to 960. -->
+      <StackPanel x:Name="Page" Margin="32,26,32,48" HorizontalAlignment="Center">
+        <TextBlock Style="{StaticResource PageTitleText}" Foreground="{ThemeResource PrimaryTextBrush}" Text="Dashboard" />
+        <TextBlock
+            x:Name="Subtitle"
+            Style="{StaticResource BodyText}"
+            Foreground="{ThemeResource SecondaryTextBrush}"
+            Margin="0,10,0,0" />
+        <local:ProgressLine
+            x:Name="Progress"
+            Margin="0,16,0,0"
+            TrackBrush="{ThemeResource TrackBrush}"
+            FillBrush="{ThemeResource GreenBrush}" />
+        <TextBlock
+            x:Name="CompletionText"
+            Style="{StaticResource CaptionText}"
+            Foreground="{ThemeResource TertiaryTextBrush}"
+            Margin="0,8,0,0" />
+
+        <Border
+            x:Name="MetricsFrame"
+            Margin="0,28,0,0"
+            BorderThickness="0,1"
+            BorderBrush="{ThemeResource SeparatorBrush}">
+          <Grid x:Name="MetricsHost" />
+        </Border>
+
+        <StackPanel Margin="0,34,0,0" Spacing="4">
+          <TextBlock Style="{StaticResource SectionHeaderText}" Text="ACTIVITY" />
+          <TextBlock
+              Style="{StaticResource CaptionText}"
+              Foreground="{ThemeResource TertiaryTextBrush}"
+              Text="Tasks completed in the last 14 days" />
+        </StackPanel>
+        <local:ActivityChart x:Name="Chart" Height="170" Margin="0,16,0,0" />
+
+        <!-- Side by side from 680 px wide, stacked below that. -->
+        <Grid x:Name="SplitGrid">
+          <StackPanel x:Name="ProjectsSection">
+            <TextBlock Style="{StaticResource SectionHeaderText}" Margin="0,36,0,8" Text="PROJECTS" />
+            <StackPanel x:Name="ProjectRows" />
+          </StackPanel>
+          <StackPanel x:Name="UpNextSection">
+            <TextBlock Style="{StaticResource SectionHeaderText}" Margin="0,36,0,8" Text="UP NEXT" />
+            <StackPanel x:Name="UpNextRows" />
+          </StackPanel>
+        </Grid>
+
+        <StackPanel x:Name="PrioritySection" HorizontalAlignment="Left">
+          <TextBlock Style="{StaticResource SectionHeaderText}" Margin="0,36,0,12" Text="OPEN BY PRIORITY" />
+          <StackPanel x:Name="PriorityRows" />
+        </StackPanel>
+      </StackPanel>
+    </ScrollViewer>
+  </Grid>
+</UserControl>

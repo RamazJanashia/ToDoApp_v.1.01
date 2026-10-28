@@ -21,12 +21,16 @@ public sealed partial class CenterView : UserControl
 
         var dashboard = state.IsDashboard;
         var mode = state.ViewMode;
-        Show(DashboardHost, dashboard);
+        Show(Dashboard, dashboard);
         Show(Header, !dashboard);
         Show(TaskList, !dashboard && mode == ViewMode.List);
         Show(Board, !dashboard && mode == ViewMode.Board);
         Show(MonthView, !dashboard && mode == ViewMode.Calendar);
-        if (dashboard) return;
+        if (dashboard)
+        {
+            Dashboard.Render(state);
+            return;
+        }
 
         Header.Render(state);
         if (mode == ViewMode.List) TaskList.Render(state);
