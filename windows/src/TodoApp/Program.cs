@@ -46,12 +46,19 @@ public static class Program
             SynchronizationContext.SetSynchronizationContext(new DispatcherQueueSynchronizationContext(queue));
 
             var clock = new SystemClock();
-            var store = new TaskStore(directory, clock, new DispatcherDebouncer(queue, SaveDelay), new NullReminderScheduler());
+            var reminders = new ToastReminderScheduler(clock, queue);
+            var store = new TaskStore(directory, clock, new DispatcherDebouncer(queue, SaveDelay), reminders);
             settings = new SettingsFile(Path.Combine(directory, "settings.json"), options, new DispatcherDebouncer(queue, SaveDelay));
             var state = new AppState(store, clock, settings.Initial, settings.Save);
             if (options.Sidebar is { } item) state.Select(item);
             if (options.SelectFirst) state.SelectTask(state.NavigationOrder.FirstOrDefault()?.Id);
 
+            // A click on a reminder shows that task, in this window if it is already open.
+            reminders.OpenTaskRequested += (_, id) =>
+            {
+                state.Reveal(id);
+                Volatile.Read(ref _app)?.BringToFront();
+            };
             Volatile.Write(ref _app, new App(state, options.Size, options.ShowSettings));
         });
 
