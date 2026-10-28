@@ -28,20 +28,59 @@
           Orientation="Horizontal"
           Spacing="8">
         <Border
+            x:Name="SearchBorder"
             Width="210"
             Height="28"
-            Padding="9,0"
+            Padding="9,0,4,0"
             CornerRadius="7"
             Background="{ThemeResource PanelBrush}"
             BorderBrush="{ThemeResource SeparatorBrush}"
             BorderThickness="1">
-          <StackPanel VerticalAlignment="Center" Orientation="Horizontal" Spacing="6">
-            <FontIcon x:Name="SearchGlyph" FontSize="11.5" FontWeight="Medium" Foreground="{ThemeResource TertiaryTextBrush}" />
-            <TextBlock Style="{StaticResource AppTextBase}" FontSize="13" Foreground="{ThemeResource TertiaryTextBrush}" Text="Search" />
-          </StackPanel>
+          <Border.Resources>
+            <SolidColorBrush x:Key="TextControlBackground" Color="Transparent" />
+            <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent" />
+            <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent" />
+            <SolidColorBrush x:Key="TextControlBorderBrush" Color="Transparent" />
+            <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent" />
+            <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="Transparent" />
+            <Thickness x:Key="TextControlBorderThemeThickness">0</Thickness>
+            <Thickness x:Key="TextControlBorderThemeThicknessFocused">0</Thickness>
+          </Border.Resources>
+          <Grid ColumnSpacing="6">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <FontIcon x:Name="SearchGlyph" FontSize="11.5" FontWeight="Medium" Foreground="{ThemeResource TertiaryTextBrush}" VerticalAlignment="Center" />
+            <TextBox
+                x:Name="SearchBox"
+                Grid.Column="1"
+                PlaceholderText="Search"
+                PlaceholderForeground="{ThemeResource TertiaryTextBrush}"
+                Foreground="{ThemeResource PrimaryTextBrush}"
+                FontSize="13"
+                BorderThickness="0"
+                Background="Transparent"
+                Padding="0"
+                MinHeight="0"
+                VerticalAlignment="Center"
+                AutomationProperties.Name="Search tasks" />
+            <Button
+                x:Name="SearchClear"
+                Grid.Column="2"
+                Style="{StaticResource IconButtonStyle}"
+                Width="20"
+                Height="20"
+                FontSize="9"
+                Visibility="Collapsed"
+                ToolTipService.ToolTip="Clear Search"
+                AutomationProperties.Name="Clear search" />
+          </Grid>
         </Border>
-        <Button x:Name="AppearanceButton" Style="{StaticResource IconButtonStyle}" />
-        <Button x:Name="InspectorButton" Style="{StaticResource IconButtonStyle}" FontSize="15" />
+        <Button x:Name="AppearanceButton" Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Appearance" AutomationProperties.Name="Appearance" />
+        <Button x:Name="InspectorButton" Style="{StaticResource IconButtonStyle}" FontSize="15" AutomationProperties.Name="Toggle inspector" />
+        <Button x:Name="MoreButton" Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="More" AutomationProperties.Name="More" />
       </StackPanel>
     </Grid>
 

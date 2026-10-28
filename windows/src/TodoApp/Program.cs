@@ -52,7 +52,7 @@ public static class Program
             if (options.Sidebar is { } item) state.Select(item);
             if (options.SelectFirst) state.SelectTask(state.NavigationOrder.FirstOrDefault()?.Id);
 
-            Volatile.Write(ref _app, new App(state, options.Size));
+            Volatile.Write(ref _app, new App(state, options.Size, options.ShowSettings));
         });
 
         // The window has closed; write a settings change that is still waiting out its delay.

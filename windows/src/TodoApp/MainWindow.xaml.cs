@@ -47,7 +47,10 @@ public sealed partial class MainWindow : Window
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico"));
 
         SearchGlyph.Glyph = Glyphs.For("magnifyingglass");
+        SearchClear.Content = Glyphs.For("xmark.circle.fill");
         InspectorButton.Content = Glyphs.For("sidebar.right");
+        MoreButton.Content = Glyphs.For("ellipsis");
+        InstallTitleBarControls();
 
         SidebarResizer.Range = ColumnLayout.SidebarRange;
         SidebarResizer.CurrentWidth = () => _sidebarWidth;
@@ -63,6 +66,7 @@ public sealed partial class MainWindow : Window
         _inspector = new InspectorView();
         InspectorHost.Content = _inspector;
         Root.PreviewKeyDown += OnPreviewKeyDown;
+        Accelerators.Install(Root, this);
 
         State.Changed += (_, _) => RenderSoon();
         State.TitleFocusRequested += (_, _) => _inspector.FocusTitle();
@@ -75,6 +79,10 @@ public sealed partial class MainWindow : Window
             ColorCaptionButtons();
             InsetTitleBar();
             Root.XamlRoot.Changed += (_, _) => InsetTitleBar();
+            // The search box is the first thing that can take focus; the keys belong to the list until it is clicked.
+            CenterHost.Focus(FocusState.Pointer);
+            // Once, after the first render: tasks that couldn't be read were set aside, and the user should know.
+            if (State.Store.LoadIssue is { } issue) _ = ShowDialogAsync(root => ShowLoadIssueAsync(root, issue));
         };
         AppWindow.Closing += (_, _) => State.Store.SaveNow();
         Activated += (_, args) =>
@@ -110,6 +118,90 @@ public sealed partial class MainWindow : Window
         });
     }
 
+    /// <summary>Opens Settings (Ctrl+, and the menu); at launch (<c>--settings</c>) it waits for the window to be up.</summary>
+    public void ShowSettings()
+    {
+        if (Root.IsLoaded)
+        {
+            _ = ShowDialogAsync(root => SettingsDialog.ShowAsync(root, State));
+            return;
+        }
+
+        RoutedEventHandler? opened = null;
+        opened = (_, _) =>
+        {
+            Root.Loaded -= opened;
+            _ = ShowDialogAsync(root => SettingsDialog.ShowAsync(root, State));
+        };
+        Root.Loaded += opened;
+    }
+
+    /// <summary>The search box, and the appearance, inspector and "More" buttons of the title bar.</summary>
+    private void InstallTitleBarControls()
+    {
+        SearchBox.TextChanged += (_, _) =>
+        {
+            SearchClear.Visibility = SearchBox.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+            if (SearchBox.Text != State.SearchText) State.SearchText = SearchBox.Text;
+        };
+        SearchBox.GotFocus += (_, _) => PaintSearchBorder();
+        SearchBox.LostFocus += (_, _) => PaintSearchBorder();
+        // Esc clears the search and gives the keys back to the list.
+        SearchBox.KeyDown += (_, e) =>
+        {
+            if (e.Key != VirtualKey.Escape) return;
+            e.Handled = true;
+            SearchBox.Text = "";
+            State.SearchText = "";
+            CenterHost.Focus(FocusState.Pointer);
+        };
+        SearchClear.Click += (_, _) =>
+        {
+            SearchBox.Text = "";
+            State.SearchText = "";
+            SearchBox.Focus(FocusState.Programmatic);
+        };
+        State.SearchFocusRequested += (_, _) =>
+        {
+            SearchBox.Focus(FocusState.Programmatic);
+            SearchBox.SelectAll();
+        };
+
+        var appearance = new MenuFlyout();
+        appearance.Opening += (_, _) =>
+        {
+            appearance.Items.Clear();
+            AppMenu.FillAppearance(appearance.Items, State, withIcons: true);
+        };
+        AppearanceButton.Flyout = appearance;
+
+        InspectorButton.Click += (_, _) => State.IsInspectorVisible = !State.IsInspectorVisible;
+        MoreButton.Flyout = AppMenu.Build(this);
+    }
+
+    /// <summary>The search box shows the focus ring while it has focus.</summary>
+    private void PaintSearchBorder()
+    {
+        var key = SearchBox.FocusState != FocusState.Unfocused ? "FocusRingBrush" : "SeparatorBrush";
+        SearchBorder.BorderBrush = new SolidColorBrush(ThemeColor(key, Root.ActualTheme));
+    }
+
+    /// <summary>"Couldn’t open your tasks" with what went wrong; the file was set aside and not overwritten.</summary>
+    private static Task ShowLoadIssueAsync(XamlRoot xamlRoot, string issue) => Dialogs.ShowAsync(
+        new ContentDialog
+        {
+            Title = "Couldn’t open your tasks",
+            Content = new TextBlock
+            {
+                Style = (Style)Application.Current.Resources["BodyText"],
+                Text = issue,
+                TextWrapping = TextWrapping.Wrap,
+            },
+            CloseButtonText = "OK",
+            DefaultButton = ContentDialogButton.Close,
+        },
+        xamlRoot);
+
     /// <summary>Restores and activates the window when another launch was handed to this copy.</summary>
     public void BringToFront()
     {
@@ -128,12 +220,10 @@ public sealed partial class MainWindow : Window
             AppearancePreference.Dark => ElementTheme.Dark,
             _ => ElementTheme.Default,
         };
-        AppearanceButton.Content = Glyphs.For(State.Appearance switch
-        {
-            AppearancePreference.Light => "sun.max",
-            AppearancePreference.Dark => "moon",
-            _ => "circle.lefthalf.filled",
-        });
+        AppearanceButton.Content = Glyphs.For(AppMenu.AppearanceIcon(State.Appearance));
+        var inspectorTip = (State.IsInspectorVisible ? "Hide Inspector" : "Show Inspector") + " (Ctrl+Shift+I)";
+        ToolTipService.SetToolTip(InspectorButton, inspectorTip);
+        if (TextSync.ShouldPush(SearchBox.Text, State.SearchText, SearchBox.FocusState != FocusState.Unfocused)) SearchBox.Text = State.SearchText;
         RenderColumns();
         _sidebar.Render(State);
         _center.Render(State);

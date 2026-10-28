@@ -52,6 +52,7 @@ public static class Glyphs
         ["magnifyingglass"] = "\uE721",
         ["sidebar.right"] = "\uE90D",
         ["xmark"] = "\uE711",
+        ["ellipsis"] = "\uE712",
         ["xmark.circle.fill"] = "\uEB90",
         ["chevron.left"] = "\uE76B",
         ["chevron.right"] = "\uE76C",
