@@ -1,10 +1,11 @@
 # ToDoApp
 
-A native macOS task manager built with Swift and SwiftUI. Minimal and monochrome on the surface, with projects, recurring tasks, reminders, a board, a calendar and a dashboard underneath.
+A native task manager for macOS (Swift and SwiftUI) and Windows (C# and WinUI 3). Minimal and monochrome on the surface, with projects, recurring tasks, reminders, a board, a calendar and a dashboard underneath.
 
 [![Build](https://github.com/RamazJanashia/ToDoApp/actions/workflows/build.yml/badge.svg)](https://github.com/RamazJanashia/ToDoApp/actions/workflows/build.yml)
-![Platform](https://img.shields.io/badge/platform-macOS%2013%2B-lightgrey)
+![Platform](https://img.shields.io/badge/platform-macOS%2013%2B%20%7C%20Windows%2010%2B-lightgrey)
 ![Swift](https://img.shields.io/badge/Swift-5.8%2B-orange)
+![.NET](https://img.shields.io/badge/.NET-10-512BD4)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 ![TodoApp in dark mode: sidebar, today's tasks and the task details panel](docs/screenshots/dark-today.png)
@@ -92,7 +93,61 @@ If `tasks.json` can't be read, it is set aside as `tasks.unreadable-<time>.json`
 TODOAPP_DATA_DIR=/tmp/todo-sandbox build/TodoApp.app/Contents/MacOS/TodoApp
 ```
 
-## Architecture
+## Windows
+
+The Windows version lives in `windows/`. It is a native WinUI 3 app (C#, .NET 10) with the same features, the same monochrome look and the same `tasks.json` format as the Mac app. It keeps its own data: nothing syncs between the two.
+
+<p align="center">
+  <img src="docs/screenshots/windows-dark-today.png" width="49%" alt="TodoApp on Windows in dark mode: today's tasks and the task details panel">
+  <img src="docs/screenshots/windows-light-board.png" width="49%" alt="TodoApp on Windows in light mode: the board view">
+</p>
+
+**Requirements:** Windows 10 version 1809 or later, or Windows 11 (x64). To build: the [.NET SDK 10](https://dotnet.microsoft.com/download). No Visual Studio needed.
+
+```powershell
+git clone https://github.com/RamazJanashia/ToDoApp.git
+cd ToDoApp\windows
+.\build.ps1 -Run
+```
+
+| Command | What it does |
+|---|---|
+| `.\build.ps1` | Publishes a self-contained build to `windows\dist\TodoApp\` and zips it as `dist\TodoApp-win-x64.zip` |
+| `.\build.ps1 -Run` | Builds a debug version, then starts it |
+| `.\build.ps1 -Install` | Publishes, copies the app to `%LOCALAPPDATA%\Programs\TodoApp\` and adds a Start menu shortcut |
+| `.\build.ps1 -Check` | Runs the tests |
+
+> The build is not signed. The first time you start it, Windows SmartScreen may say it protected your PC: choose **More info**, then **Run anyway**.
+
+**Keyboard shortcuts** — the same as on the Mac, with Ctrl in place of ⌘:
+
+| Shortcut | Action |
+|---|---|
+| Ctrl+N / Ctrl+Shift+N | New task / new project |
+| Ctrl+F | Search (Esc clears) |
+| ↑ ↓ | Move through tasks |
+| Space or Ctrl+Enter | Complete or reopen |
+| Enter or Ctrl+E | Edit the title |
+| Double-click | Open a task's details |
+| Delete or Backspace | Delete (undoable) |
+| Ctrl+D | Duplicate |
+| Ctrl+Shift+3 / 2 / 1 / 0 | Priority High / Medium / Low / None |
+| Ctrl+T / Ctrl+Shift+T | Due today / tomorrow |
+| Ctrl+1 / 2 / 3 | List / Board / Calendar |
+| Alt+1 … Alt+5 | Inbox, Today, Upcoming, Completed, Dashboard |
+| Ctrl+Shift+S / Ctrl+Shift+I | Show or hide the sidebar / task details |
+| Ctrl+Z / Ctrl+Y | Undo / redo |
+| Ctrl+, | Settings |
+
+The **…** button in the title bar opens the same commands as a menu.
+
+**Reminders** are Windows notifications, scheduled with Windows itself, so they appear even when TodoApp is closed. Clicking one opens the task.
+
+**Where your data lives:** `%LOCALAPPDATA%\TodoApp\` holds `tasks.json`, `settings.json`, the `Attachments\` folder and `TodoApp.log`. To try the app without touching your own tasks, start it with `--data-dir <folder>` (or set `TODOAPP_DATA_DIR`).
+
+The code is in `windows/src/`: `TodoCore` (models, recurrence, queries, persistence; a port of the Swift module), `TodoApp.State` (the store, undo, autosave and what each view shows; no UI) and `TodoApp` (the WinUI shell). Tests are in `windows/tests/`.
+
+## Architecture (macOS)
 
 The code is split into two modules:
 

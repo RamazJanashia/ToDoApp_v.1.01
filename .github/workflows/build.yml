@@ -29,3 +29,30 @@ jobs:
 
       - name: Build with Swift Package Manager
         run: swift build -c release
+
+  windows:
+    name: Build and check (Windows)
+    runs-on: windows-latest
+    defaults:
+      run:
+        # global.json (the SDK version and the test runner) is looked up from here.
+        working-directory: windows
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Run the tests
+        run: dotnet test TodoApp.Windows.slnx
+
+      - name: Build and package the app
+        shell: pwsh
+        run: ./build.ps1
+
+      - name: Upload the build
+        uses: actions/upload-artifact@v7
+        with:
+          name: TodoApp-win-x64
+          path: windows/dist/TodoApp-win-x64.zip
