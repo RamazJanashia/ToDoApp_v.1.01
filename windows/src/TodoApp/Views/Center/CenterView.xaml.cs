@@ -24,12 +24,13 @@ public sealed partial class CenterView : UserControl
         Show(DashboardHost, dashboard);
         Show(Header, !dashboard);
         Show(TaskList, !dashboard && mode == ViewMode.List);
-        Show(BoardHost, !dashboard && mode == ViewMode.Board);
+        Show(Board, !dashboard && mode == ViewMode.Board);
         Show(CalendarHost, !dashboard && mode == ViewMode.Calendar);
         if (dashboard) return;
 
         Header.Render(state);
         if (mode == ViewMode.List) TaskList.Render(state);
+        else if (mode == ViewMode.Board) Board.Render(state);
     }
 
     private static void Show(UIElement element, bool visible) =>

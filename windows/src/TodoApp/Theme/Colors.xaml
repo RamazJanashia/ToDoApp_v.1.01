@@ -10,6 +10,9 @@
     <ResourceDictionary x:Key="Default">
       <!-- Surfaces -->
       <SolidColorBrush x:Key="BackgroundBrush" Color="#08090B" />
+      <!-- The background and its fully clear twin, for fades (a gradient needs colours, not brushes). -->
+      <Color x:Key="BackgroundColor">#08090B</Color>
+      <Color x:Key="BackgroundClearColor">#0008090B</Color>
       <SolidColorBrush x:Key="PanelBrush" Color="#101114" />
       <SolidColorBrush x:Key="RaisedBrush" Color="#16171B" />
       <SolidColorBrush x:Key="RaisedHoverBrush" Color="#1A1B1F" />
@@ -66,6 +69,8 @@
     <ResourceDictionary x:Key="Light">
       <!-- Surfaces -->
       <SolidColorBrush x:Key="BackgroundBrush" Color="#FBFBFC" />
+      <Color x:Key="BackgroundColor">#FBFBFC</Color>
+      <Color x:Key="BackgroundClearColor">#00FBFBFC</Color>
       <SolidColorBrush x:Key="PanelBrush" Color="#F2F2F4" />
       <SolidColorBrush x:Key="RaisedBrush" Color="#FFFFFF" />
       <SolidColorBrush x:Key="RaisedHoverBrush" Color="#FAFAFB" />

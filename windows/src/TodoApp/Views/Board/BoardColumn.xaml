@@ -1,0 +1,92 @@
+<!-- One status column (KanbanColumn in KanbanBoardView.swift): header, scrolling cards, empty text. -->
+<UserControl
+    x:Class="TodoApp.BoardColumn"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    IsTabStop="False">
+  <Grid x:Name="Root" AllowDrop="True" Background="Transparent">
+    <VisualStateManager.VisualStateGroups>
+      <VisualStateGroup x:Name="IconStates">
+        <VisualState x:Name="IconNormal" />
+        <VisualState x:Name="IconDone">
+          <VisualState.Setters>
+            <Setter Target="StatusIcon.Foreground" Value="{ThemeResource GreenBrush}" />
+          </VisualState.Setters>
+        </VisualState>
+      </VisualStateGroup>
+    </VisualStateManager.VisualStateGroups>
+
+    <Border
+        CornerRadius="12"
+        BorderThickness="1"
+        BorderBrush="{ThemeResource SeparatorBrush}"
+        Background="{ThemeResource PanelBrush}" />
+    <!-- The drop highlight: the border at the blue, 0.6. -->
+    <Border
+        x:Name="TargetBorder"
+        CornerRadius="12"
+        BorderThickness="1"
+        BorderBrush="{ThemeResource BlueBrush}"
+        Opacity="0.6"
+        Visibility="Collapsed"
+        IsHitTestVisible="False" />
+
+    <Grid>
+      <Grid.RowDefinitions>
+        <RowDefinition Height="44" />
+        <RowDefinition Height="*" />
+      </Grid.RowDefinitions>
+
+      <Grid Padding="14,0,8,0" ColumnSpacing="8">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <FontIcon x:Name="StatusIcon" FontSize="12" Foreground="{ThemeResource SecondaryTextBrush}" VerticalAlignment="Center" />
+        <TextBlock
+            x:Name="TitleText"
+            Grid.Column="1"
+            Style="{StaticResource AppTextBase}"
+            FontSize="13"
+            FontWeight="SemiBold"
+            Foreground="{ThemeResource PrimaryTextBrush}"
+            Opacity="0.88"
+            VerticalAlignment="Center" />
+        <TextBlock
+            x:Name="CountText"
+            Grid.Column="2"
+            Style="{StaticResource CaptionText}"
+            Foreground="{ThemeResource TertiaryTextBrush}"
+            Typography.NumeralAlignment="Tabular"
+            VerticalAlignment="Center" />
+        <Button
+            x:Name="AddButton"
+            Grid.Column="4"
+            Style="{StaticResource IconButtonStyle}"
+            FontSize="12"
+            Opacity="0"
+            AutomationProperties.Name="Add task" />
+      </Grid>
+
+      <ScrollViewer
+          Grid.Row="1"
+          VerticalScrollBarVisibility="Hidden"
+          HorizontalScrollMode="Disabled"
+          HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Padding="8,0,8,10" Spacing="8">
+          <StackPanel x:Name="Cards" Spacing="8" />
+          <TextBlock
+              x:Name="EmptyText"
+              Style="{StaticResource CaptionText}"
+              Foreground="{ThemeResource TertiaryTextBrush}"
+              HorizontalAlignment="Center"
+              Margin="0,28"
+              Visibility="Collapsed" />
+        </StackPanel>
+      </ScrollViewer>
+    </Grid>
+  </Grid>
+</UserControl>

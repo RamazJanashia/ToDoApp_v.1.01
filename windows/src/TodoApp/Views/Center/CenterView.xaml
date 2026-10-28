@@ -13,8 +13,9 @@
     <local:CenterHeader x:Name="Header" />
     <local:TaskListView x:Name="TaskList" Grid.Row="1" />
 
-    <!-- Placeholders until the board, calendar and dashboard views exist (Tasks 17–19). -->
-    <Grid x:Name="BoardHost" Grid.Row="1" Visibility="Collapsed" />
+    <local:BoardView x:Name="Board" Grid.Row="1" Visibility="Collapsed" />
+
+    <!-- Placeholders until the calendar and dashboard views exist (Tasks 18–19). -->
     <Grid x:Name="CalendarHost" Grid.Row="1" Visibility="Collapsed" />
     <!-- The dashboard replaces the header as well. -->
     <Grid x:Name="DashboardHost" Grid.RowSpan="2" Visibility="Collapsed" />

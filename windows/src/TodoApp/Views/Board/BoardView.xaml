@@ -1,0 +1,32 @@
+<!-- The board (KanbanBoardView in KanbanBoardView.swift): three equal columns that scroll sideways when too narrow. -->
+<UserControl
+    x:Class="TodoApp.BoardView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:TodoApp"
+    IsTabStop="False">
+  <Grid x:Name="Root">
+    <ScrollViewer
+        x:Name="Scroller"
+        HorizontalScrollBarVisibility="Auto"
+        HorizontalScrollMode="Auto"
+        VerticalScrollBarVisibility="Disabled"
+        VerticalScrollMode="Disabled">
+      <StackPanel x:Name="Columns" Orientation="Horizontal" Spacing="14" Padding="32,14,32,24" VerticalAlignment="Stretch">
+        <local:BoardColumn x:Name="TodoColumn" />
+        <local:BoardColumn x:Name="InProgressColumn" />
+        <local:BoardColumn x:Name="DoneColumn" />
+      </StackPanel>
+    </ScrollViewer>
+
+    <!-- A soft fade on the right edge says the board scrolls. -->
+    <Rectangle x:Name="Fade" Width="40" HorizontalAlignment="Right" IsHitTestVisible="False" Visibility="Collapsed">
+      <Rectangle.Fill>
+        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+          <GradientStop Color="{ThemeResource BackgroundClearColor}" Offset="0" />
+          <GradientStop Color="{ThemeResource BackgroundColor}" Offset="1" />
+        </LinearGradientBrush>
+      </Rectangle.Fill>
+    </Rectangle>
+  </Grid>
+</UserControl>
