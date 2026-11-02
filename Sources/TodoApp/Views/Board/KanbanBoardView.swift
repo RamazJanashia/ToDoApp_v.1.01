@@ -102,7 +102,6 @@ struct KanbanColumn: View {
 }
 
 struct KanbanCard: View {
-    @EnvironmentObject private var store: TaskStore
     @EnvironmentObject private var state: AppState
 
     let task: TaskItem
@@ -120,7 +119,7 @@ struct KanbanCard: View {
                     withAnimation(Theme.Motion.standard) { state.toggleCompleted(task.id) }
                 }
                 .padding(.top, 1)
-                Text(task.title.isEmpty ? "Untitled" : task.title)
+                Text(task.displayTitle)
                     .font(.system(size: 13.5))
                     .foregroundColor(task.isCompleted || task.title.isEmpty ? Theme.tertiaryText : Theme.primaryText)
                     .strikethrough(task.isCompleted, color: Theme.tertiaryText)
@@ -162,5 +161,6 @@ struct KanbanCard: View {
             }
         } isTargeted: { isDropTarget = $0 }
         .contextMenu { TaskContextMenu(task: task) }
+        .accessibleRow(task.displayTitle, isSelected: isSelected) { state.selectTask(task.id, endEditing: true) }
     }
 }

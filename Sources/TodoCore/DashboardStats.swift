@@ -76,8 +76,9 @@ public struct DashboardStats: Sendable {
         }
 
         projects = allProjects.map { project in
-            let entry = perProject[project.id] ?? (0, 0)
-            return ProjectProgress(project: project, done: entry.done, total: entry.total)
+            // A project includes its sub-projects, as it does in the sidebar and on its own page.
+            let branch = allProjects.subtreeIDs(of: project.id).compactMap { perProject[$0] }
+            return ProjectProgress(project: project, done: branch.reduce(0) { $0 + $1.done }, total: branch.reduce(0) { $0 + $1.total })
         }
 
         upNext = Array(

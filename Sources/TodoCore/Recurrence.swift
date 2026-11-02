@@ -35,10 +35,27 @@ public struct RecurrenceRule: Codable, Hashable, Sendable {
     /// Empty means "the same weekday as the due date".
     public var weekdays: [Int]
 
+    /// Far beyond anything the editor offers; keeps date arithmetic safe from a hand-edited file.
+    public static let maximumInterval = 999
+
     public init(frequency: Frequency, interval: Int = 1, weekdays: [Int] = []) {
         self.frequency = frequency
-        self.interval = max(1, interval)
+        self.interval = Swift.min(Swift.max(1, interval), Self.maximumInterval)
         self.weekdays = Array(Set(weekdays.filter { (1...7).contains($0) })).sorted()
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case frequency, interval, weekdays
+    }
+
+    /// Goes through `init` so a hand-edited file can't bring in values the rest of the code doesn't expect.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            frequency: try c.decode(Frequency.self, forKey: .frequency),
+            interval: try c.decodeIfPresent(Int.self, forKey: .interval) ?? 1,
+            weekdays: try c.decodeIfPresent([Int].self, forKey: .weekdays) ?? []
+        )
     }
 
     public static let daily = RecurrenceRule(frequency: .daily)

@@ -23,8 +23,8 @@ struct AttachmentStorage {
 
     func url(for attachment: Attachment) -> URL? {
         switch attachment.kind {
-        case .file: return directory.appendingPathComponent(attachment.location)
-        case .link: return URL(string: attachment.location)
+        case .file: return AttachmentFiles.url(forLocation: attachment.location, in: directory)
+        case .link: return AttachmentLink.canOpen(attachment.location) ? URL(string: attachment.location) : nil
         }
     }
 
@@ -52,28 +52,19 @@ struct AttachmentStorage {
 
     /// File size and kind, e.g. "PDF document · 1.2 MB".
     func detail(for attachment: Attachment) -> String {
-        guard attachment.kind == .file, let url = url(for: attachment) else {
+        guard attachment.kind == .file else {
             return URL(string: attachment.location)?.host ?? attachment.location
         }
+        guard let url = url(for: attachment) else { return "File · missing" }
         let values = try? url.resourceValues(forKeys: [.fileSizeKey, .localizedTypeDescriptionKey])
         let kind = values?.localizedTypeDescription ?? "File"
         guard let size = values?.fileSize else { return "\(kind) · missing" }
         return "\(kind) · \(ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file))"
     }
 
-    /// Deletes stored copies no task refers to any more. Runs at launch, which keeps
-    /// undo of a deleted task or attachment safe for the whole session.
-    func removeFiles(notIn referenced: Set<String>) {
-        AttachmentFiles.removeUnreferenced(in: directory, keeping: referenced)
-    }
-
-    /// Accepts "example.com/page" as well as full URLs.
-    static func link(from text: String) -> Attachment? {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !trimmed.contains(" ") else { return nil }
-        let candidate = trimmed.contains("://") ? trimmed : "https://\(trimmed)"
-        guard let url = URL(string: candidate), let host = url.host, host.contains(".") || host == "localhost" else { return nil }
-        let name = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
-        return Attachment(kind: .link, name: name, location: url.absoluteString)
+    /// Deletes stored copies nothing refers to any more, apart from those in dated folders
+    /// named `keepingFoldersFrom` or later.
+    func removeFiles(notIn referenced: Set<String>, keepingFoldersFrom firstKeptFolder: String) {
+        AttachmentFiles.removeUnreferenced(in: directory, keeping: referenced, keepingFoldersFrom: firstKeptFolder)
     }
 }

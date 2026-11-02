@@ -68,8 +68,9 @@ public struct TaskQuery: Hashable, Sendable {
             .split(whereSeparator: \.isWhitespace)
             .map(String.init)
 
+        let bounds = DayBounds(now: now, calendar: calendar)
         let matching = tasks.filter { task in
-            guard Self.belongs(task, to: scope, now: now, calendar: calendar) || isCompletedHistory(task) else { return false }
+            guard Self.belongs(task, to: scope, bounds: bounds) || isCompletedHistory(task) else { return false }
             if task.isCompleted && !showCompleted && scope != .completed { return false }
             if !priorities.isEmpty && !priorities.contains(task.priority) { return false }
             if !tokens.isEmpty {
@@ -95,15 +96,30 @@ public struct TaskQuery: Hashable, Sendable {
 
     /// Incomplete tasks in a scope, for sidebar counters.
     public static func openCount(in scope: TaskScope, tasks: [TaskItem], now: Date = Date(), calendar: Calendar = .current) -> Int {
-        tasks.reduce(0) { count, task in
-            count + (!task.isCompleted && belongs(task, to: scope, now: now, calendar: calendar) ? 1 : 0)
+        let bounds = DayBounds(now: now, calendar: calendar)
+        return tasks.reduce(0) { count, task in
+            count + (!task.isCompleted && belongs(task, to: scope, bounds: bounds) ? 1 : 0)
         }
     }
 
     public static func belongs(_ task: TaskItem, to scope: TaskScope, now: Date, calendar: Calendar) -> Bool {
-        let startOfToday = calendar.startOfDay(for: now)
-        let startOfTomorrow = calendar.date(byAdding: .day, value: 1, to: startOfToday) ?? now
-        let finishedToday = task.completedAt.map { calendar.isDate($0, inSameDayAs: now) } ?? false
+        belongs(task, to: scope, bounds: DayBounds(now: now, calendar: calendar))
+    }
+
+    /// Worked out once per pass: calendar arithmetic is the expensive part of running over many tasks.
+    private struct DayBounds {
+        let startOfToday: Date
+        let startOfTomorrow: Date
+
+        init(now: Date, calendar: Calendar) {
+            startOfToday = calendar.startOfDay(for: now)
+            startOfTomorrow = calendar.date(byAdding: .day, value: 1, to: startOfToday) ?? now
+        }
+    }
+
+    private static func belongs(_ task: TaskItem, to scope: TaskScope, bounds: DayBounds) -> Bool {
+        let startOfTomorrow = bounds.startOfTomorrow
+        let finishedToday = task.completedAt.map { $0 >= bounds.startOfToday && $0 < startOfTomorrow } ?? false
 
         switch scope {
         case .allOpen:
@@ -266,6 +282,13 @@ public enum DueDateText {
             }
             return date.formatted(.dateTime.month(.abbreviated).day().year())
         }
+    }
+
+    /// The coming Monday (or the locale's first weekday, where that isn't Sunday).
+    public static func nextWeek(from now: Date = Date(), calendar: Calendar = .current) -> Date {
+        let today = calendar.startOfDay(for: now)
+        let weekday = calendar.firstWeekday == 1 ? 2 : calendar.firstWeekday
+        return calendar.nextDate(after: today, matching: DateComponents(weekday: weekday), matchingPolicy: .nextTime) ?? today
     }
 
     public static func dayDifference(from start: Date, to end: Date, calendar: Calendar = .current) -> Int {

@@ -87,14 +87,8 @@ struct DueDatePopover: View {
         store.updateTask(taskID, undoName: "Set Due Date") { $0.reschedule(toDay: day) }
     }
 
-    /// The coming Monday (or the locale's first weekday).
     private func setNextWeek() {
-        let today = calendar.startOfDay(for: Date())
-        let next = calendar.nextDate(
-            after: today,
-            matching: DateComponents(weekday: calendar.firstWeekday == 1 ? 2 : calendar.firstWeekday),
-            matchingPolicy: .nextTime
-        ) ?? today
+        let next = DueDateText.nextWeek(calendar: calendar)
         store.updateTask(taskID, undoName: "Set Due Date") { $0.reschedule(toDay: next) }
     }
 }
@@ -236,7 +230,7 @@ struct ReminderPopover: View {
                 ForEach(ReminderPreset.offsets, id: \.self) { offset in
                     OptionRow(icon: nil, title: ReminderPreset.title(for: offset), isSelected: task?.reminderOffset == offset) {
                         store.updateTask(taskID, undoName: "Set Reminder") { $0.reminderOffset = offset }
-                        store.reminders.requestAuthorizationIfNeeded()
+                        store.confirmRemindersAllowed()
                         dismiss()
                     }
                 }

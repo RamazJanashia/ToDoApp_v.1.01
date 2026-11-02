@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import Foundation
 import SwiftUI
 import TodoCore
@@ -32,6 +33,21 @@ enum ViewMode: String, CaseIterable, Identifiable {
         case .list: return "list.bullet"
         case .board: return "rectangle.split.3x1"
         case .calendar: return "calendar"
+        }
+    }
+}
+
+/// The shortcuts offered wherever a due date can be set.
+enum QuickDue {
+    case today, tomorrow, nextWeek
+
+    var day: Date {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        switch self {
+        case .today: return today
+        case .tomorrow: return calendar.date(byAdding: .day, value: 1, to: today) ?? today
+        case .nextWeek: return DueDateText.nextWeek(calendar: calendar)
         }
     }
 }
@@ -115,6 +131,7 @@ final class AppState: ObservableObject {
 
     private var clockObservers: [NSObjectProtocol] = []
     private var minuteTimer: Timer?
+    private var projectWatcher: AnyCancellable?
 
     private let defaults = UserDefaults.standard
     private enum Keys {
@@ -146,6 +163,10 @@ final class AppState: ObservableObject {
         restoreWorkspace()
         store.reminders.onOpenTask = { [weak self] id in self?.reveal(id) }
         startClock()
+        // Undo can take away the project on screen. On the next turn, so the store has settled.
+        projectWatcher = store.$projects
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.leaveMissingProject() }
     }
 
     /// Back to where the user left off, as far as that place and task still exist.
@@ -166,17 +187,28 @@ final class AppState: ObservableObject {
     /// "Today", overdue colouring and counts are worked out when views draw, so redraw when
     /// the day changes, after sleep, and once a minute for tasks with a time of day.
     private func startClock() {
-        let refresh: (Notification) -> Void = { [weak self] _ in self?.objectWillChange.send() }
+        let refresh: (Notification) -> Void = { [weak self] _ in self?.clockDidTick() }
         for name in [Notification.Name.NSCalendarDayChanged, .NSSystemTimeZoneDidChange] {
             clockObservers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main, using: refresh))
         }
         clockObservers.append(NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main, using: refresh
         ))
-        let timer = Timer(timeInterval: 60, repeats: true) { [weak self] _ in self?.objectWillChange.send() }
+        let timer = Timer(timeInterval: 60, repeats: true) { [weak self] _ in self?.clockDidTick() }
         timer.tolerance = 10
         RunLoop.main.add(timer, forMode: .common)
         minuteTimer = timer
+    }
+
+    private func clockDidTick() {
+        objectWillChange.send()
+        store.reminders.resync()
+    }
+
+    private func leaveMissingProject() {
+        if case .project(let id) = sidebarSelection, store.project(with: id) == nil {
+            select(homeForNewTasks)
+        }
     }
 
     // MARK: - Derived
@@ -300,8 +332,14 @@ final class AppState: ObservableObject {
     }
 
     func openSettings() {
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
         NSApp.activate(ignoringOtherApps: true)
+        // macOS 14 ignores showSettingsWindow: sent from code, but the menu item always works.
+        if let menu = NSApp.mainMenu?.items.first?.submenu,
+           let index = menu.items.firstIndex(where: { $0.keyEquivalent == "," }) {
+            menu.performActionForItem(at: index)
+        } else {
+            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        }
     }
 
     /// Where new tasks go from a place that can't list them, such as the Dashboard.
@@ -324,6 +362,11 @@ final class AppState: ObservableObject {
 
     // MARK: - Navigation
 
+    /// For shortcuts into a place, such as a dashboard tile: a place that's been hidden stays hidden.
+    func selectIfShown(_ item: SidebarItem) {
+        if shows(item.element) { select(item) }
+    }
+
     func select(_ item: SidebarItem) {
         searchText = ""
         isComposing = false
@@ -345,13 +388,13 @@ final class AppState: ObservableObject {
     func reveal(_ id: UUID) {
         guard let task = store.task(with: id) else { return }
         searchText = ""
-        if let projectID = task.projectID, !TaskQuery.belongs(task, to: .today, now: Date(), calendar: .current) {
-            sidebarSelection = .project(projectID)
-        } else if TaskQuery.belongs(task, to: .today, now: Date(), calendar: .current) {
-            sidebarSelection = .today
-        } else {
-            sidebarSelection = task.isCompleted ? .completed : (task.dueDate == nil ? .allTasks : .upcoming)
-        }
+        // Best place first, skipping any the user has hidden.
+        var places: [SidebarItem] = []
+        if TaskQuery.belongs(task, to: .today, now: Date(), calendar: .current) { places.append(.today) }
+        if let projectID = task.projectID, store.project(with: projectID) != nil { places.append(.project(projectID)) }
+        places.append(task.isCompleted ? .completed : (task.dueDate == nil ? .allTasks : .upcoming))
+        if !task.isCompleted { places.append(.allTasks) }
+        if let place = places.first(where: { shows($0.element) }) { sidebarSelection = place }
         selectedTaskID = id
         isInspectorVisible = true
     }
@@ -487,6 +530,10 @@ final class AppState: ObservableObject {
         }
     }
 
+    func setDue(_ due: QuickDue, for ids: [UUID]) {
+        setDueDay(due.day, for: ids)
+    }
+
     func move(_ ids: [UUID], toProject projectID: UUID?) {
         store.updateTasks(ids, undoName: "Move to Project") { $0.projectID = projectID }
     }
@@ -516,13 +563,18 @@ final class AppState: ObservableObject {
     func handleDrop(_ items: [String], before targetID: UUID, in ordered: [TaskItem]) -> Bool {
         let ids = Self.taskIDs(from: items)
         guard let id = ids.first, id != targetID else { return false }
+        place(id, before: targetID, in: ordered)
+        return true
+    }
+
+    /// Placing a task by hand only means something in manual order, so that's what it switches to.
+    private func place(_ id: UUID, before targetID: UUID, in ordered: [TaskItem]) {
         var ordering = ordered
         if sort != .manual {
             sort = .manual
             ordering = ordered.sorted { $0.sortOrder < $1.sortOrder }
         }
         store.moveTask(id, before: targetID, in: ordering)
-        return true
     }
 
     /// Cards dropped on a board column (optionally in front of a card).
@@ -531,7 +583,7 @@ final class AppState: ObservableObject {
         guard !ids.isEmpty else { return false }
         store.setStatus(ids, to: status)
         if let targetID, let id = ids.first {
-            store.moveTask(id, before: targetID, in: ordered)
+            place(id, before: targetID, in: ordered)
         }
         return true
     }

@@ -2,7 +2,6 @@ import SwiftUI
 import TodoCore
 
 struct CenterView: View {
-    @EnvironmentObject private var store: TaskStore
     @EnvironmentObject private var state: AppState
 
     var body: some View {

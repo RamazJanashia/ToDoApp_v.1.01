@@ -189,12 +189,15 @@ struct CalendarDayCell: View {
             state.handleDrop(items, onDay: day)
         } isTargeted: { isDropTarget = $0 }
         .help(helpText)
+        .accessibleRow(day.formatted(date: .complete, time: .omitted), isSelected: isSelected) {
+            state.calendarSelectedDay = Calendar.current.startOfDay(for: day)
+        }
     }
 
     private var helpText: String {
         let date = day.formatted(date: .complete, time: .omitted)
         guard isCompact, !tasks.isEmpty else { return date }
-        return ([date] + tasks.map { "• " + ($0.title.isEmpty ? "Untitled" : $0.title) }).joined(separator: "\n")
+        return ([date] + tasks.map { "• " + $0.displayTitle }).joined(separator: "\n")
     }
 
     /// Up to three dots (project or priority colour) and a count for the rest.
@@ -238,7 +241,7 @@ struct CalendarTaskChip: View {
     var body: some View {
         HStack(spacing: 5) {
             Circle().fill(dotColor).frame(width: 5, height: 5)
-            Text(task.title.isEmpty ? "Untitled" : task.title)
+            Text(task.displayTitle)
                 .font(.system(size: 11))
                 .foregroundColor(task.isCompleted ? Theme.tertiaryText : Theme.primaryText.opacity(0.88))
                 .strikethrough(task.isCompleted, color: Theme.tertiaryText)
@@ -256,5 +259,6 @@ struct CalendarTaskChip: View {
         .onHover { hovering = $0 }
         .draggable(task.id.uuidString) { TaskDragPreview(task: task) }
         .contextMenu { TaskContextMenu(task: task) }
+        .accessibleRow(task.displayTitle, isSelected: isSelected) { state.selectTask(task.id, endEditing: true) }
     }
 }

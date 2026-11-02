@@ -2,7 +2,6 @@ import SwiftUI
 import TodoCore
 
 struct TaskRowView: View {
-    @EnvironmentObject private var store: TaskStore
     @EnvironmentObject private var state: AppState
 
     let task: TaskItem
@@ -21,7 +20,7 @@ struct TaskRowView: View {
             }
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(task.title.isEmpty ? "Untitled" : task.title)
+                Text(task.displayTitle)
                     .font(Theme.Font.rowTitle)
                     .foregroundColor(task.isCompleted || task.title.isEmpty ? Theme.tertiaryText : Theme.primaryText)
                     .strikethrough(task.isCompleted, color: Theme.tertiaryText)
@@ -62,6 +61,7 @@ struct TaskRowView: View {
             state.handleDrop(items, before: task.id, in: siblings)
         } isTargeted: { isDropTarget = $0 }
         .contextMenu { TaskContextMenu(task: task) }
+        .accessibleRow(task.displayTitle, isSelected: isSelected) { state.selectTask(task.id, endEditing: true) }
         .animation(Theme.Motion.quick, value: isSelected)
     }
 }
@@ -168,7 +168,7 @@ struct TaskDragPreview: View {
     var body: some View {
         HStack(spacing: 8) {
             Circle().fill(Theme.checkboxFill).frame(width: 12, height: 12)
-            Text(task.title.isEmpty ? "Untitled" : task.title)
+            Text(task.displayTitle)
                 .font(.system(size: 13))
                 .foregroundColor(Theme.primaryText)
                 .lineLimit(1)
@@ -197,9 +197,9 @@ struct TaskContextMenu: View {
         Divider()
 
         Menu("Due Date") {
-            Button("Today") { setDue(0) }
-            Button("Tomorrow") { setDue(1) }
-            Button("Next Week") { setDue(7) }
+            Button("Today") { state.setDue(.today, for: [task.id]) }
+            Button("Tomorrow") { state.setDue(.tomorrow, for: [task.id]) }
+            Button("Next Week") { state.setDue(.nextWeek, for: [task.id]) }
             if task.dueDate != nil {
                 Divider()
                 Button("Remove Due Date") { state.setDueDay(nil, for: [task.id]) }
@@ -244,10 +244,5 @@ struct TaskContextMenu: View {
         Button("Delete", role: .destructive) {
             state.delete([task.id])
         }
-    }
-
-    private func setDue(_ offset: Int) {
-        let today = Calendar.current.startOfDay(for: Date())
-        state.setDueDay(Calendar.current.date(byAdding: .day, value: offset, to: today), for: [task.id])
     }
 }

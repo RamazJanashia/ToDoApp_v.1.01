@@ -51,7 +51,7 @@ cd ToDoApp
 | `./build.sh` | Builds an optimised `build/TodoApp.app` |
 | `./build.sh --run` | Builds, then opens the app |
 | `./build.sh --install` | Builds, then copies the app to `~/Applications` |
-| `./build.sh --check` | Builds the core library and runs its behaviour checks |
+| `./build.sh --check` | Builds the core library and runs the core and store behaviour checks |
 | `./build.sh --debug` | Faster, unoptimised build |
 
 `build.sh` calls `swiftc` directly, so it only needs the Command Line Tools. (Some Command Line Tools releases ship a SwiftPM that can't build without full Xcode; the script sidesteps that.) It assembles a proper app bundle with an icon and signs it ad hoc so notifications work.
@@ -84,9 +84,14 @@ cd ToDoApp
 Everything stays in `~/Library/Application Support/TodoApp/`:
 
 - `tasks.json` — tasks and projects, saved automatically a moment after each change and when the app quits. Writes are atomic, so a crash can't leave a half-written file.
-- `Attachments/` — copies of attached files, so attachments survive the originals being moved or deleted.
+- `Backups/<date>/tasks.json` — your tasks as they stood when that day began. The newest 30 are kept.
+- `Attachments/<date>/` — copies of attached files, so attachments survive the originals being moved or deleted.
 
-If `tasks.json` can't be read, it is set aside as `tasks.unreadable-<time>.json` and never overwritten. To try the app without touching your own tasks, point it at another folder:
+A stored file is removed only once nothing can need it: not `tasks.json`, not a backup, and not attached in the last 30 days.
+
+If `tasks.json` can't be read, it is set aside as `tasks.unreadable-<time>.json` and never overwritten. While such a file is in the folder, no attachments are cleaned up. A file saved by a newer version of the app is left in place, and changes aren't saved over it.
+
+To try the app without touching your own tasks or reminders, point it at another folder. Window preferences are still shared:
 
 ```sh
 TODOAPP_DATA_DIR=/tmp/todo-sandbox build/TodoApp.app/Contents/MacOS/TodoApp
@@ -109,6 +114,7 @@ Sources/
     Design/                Theme tokens (light and dark) and shared components
     Views/                 Sidebar · List · Board · Calendar · Dashboard · Inspector
 Tests/TodoCoreChecks/      Behaviour checks for TodoCore
+Tests/TaskStoreChecks/     Checks for the store and launch sequence (built by build.sh only)
 Scripts/make_icon.swift    Draws the app icon
 build.sh                   Builds and packages the app without Xcode
 ```
@@ -125,7 +131,7 @@ A few decisions worth knowing:
 ./build.sh --check
 ```
 
-The checks cover recurrence (including month ends and leap days), reopening repeating tasks, queries and sorting, list sections, drag ordering, dashboard numbers, reminder timing and persistence (round trips, older files and unreadable files). They run as a small executable because the Command Line Tools don't include XCTest. CI runs them on every push.
+The checks cover recurrence (including month ends and leap days), reopening repeating tasks, queries and sorting, list sections, drag ordering, dashboard numbers, reminder timing, persistence (round trips, older, newer and unreadable files), which links and attachment paths may open, and what survives a bad start. They run as a small executable because the Command Line Tools don't include XCTest. CI runs them on every push.
 
 ## Contributing
 

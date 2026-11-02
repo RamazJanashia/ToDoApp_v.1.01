@@ -57,9 +57,10 @@ enum Theme {
     static let track = Color.ink(dark: 0.1, light: 0.08)
 
     // Text
+    // Secondary and tertiary both reach 4.5:1 (WCAG AA) on every surface.
     static let primaryText = Color.ink(dark: 0.93, light: 0.87)
-    static let secondaryText = Color.ink(dark: 0.55, light: 0.52)
-    static let tertiaryText = Color.ink(dark: 0.33, light: 0.32)
+    static let secondaryText = Color.ink(dark: 0.62, light: 0.62)
+    static let tertiaryText = Color.ink(dark: 0.48, light: 0.55)
 
     // Controls
     static let checkboxFill = Color.ink(dark: 0.6, light: 0.22)
@@ -95,9 +96,13 @@ enum Theme {
         static let pageMargin: CGFloat = 32
     }
 
+    /// `nil` when Reduce Motion is on, which makes changes happen without animating.
     enum Motion {
-        static let quick = Animation.easeOut(duration: 0.16)
-        static let standard = Animation.spring(response: 0.32, dampingFraction: 0.86)
+        private static var reduced: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
+
+        static var quick: Animation? { reduced ? nil : .easeOut(duration: 0.16) }
+        static var standard: Animation? { reduced ? nil : .spring(response: 0.32, dampingFraction: 0.86) }
+        static var press: Animation? { reduced ? nil : .spring(response: 0.22, dampingFraction: 0.55) }
     }
 }
 

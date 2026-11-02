@@ -312,6 +312,187 @@ do {
 }
 try? FileManager.default.removeItem(at: dataFolder)
 
+print("Editing a spawned occurrence")
+func completedSeries() -> (tasks: [TaskItem], id: UUID) {
+    var list = [TaskItem(title: "Gym", dueDate: today, recurrence: .daily, sortOrder: 1)]
+    let id = list[0].id
+    TaskOperations.setStatus(.done, for: [id], in: &list, now: now, calendar: calendar)
+    return (list, id)
+}
+var rescheduled = completedSeries()
+rescheduled.tasks[1].dueDate = date(2026, 12, 1)
+TaskOperations.setStatus(.todo, for: [rescheduled.id], in: &rescheduled.tasks, now: now, calendar: calendar)
+check("a rescheduled occurrence is kept", rescheduled.tasks.count == 2 && rescheduled.tasks[1].dueDate == date(2026, 12, 1))
+var reminded = completedSeries()
+reminded.tasks[1].reminderOffset = 900
+TaskOperations.setStatus(.todo, for: [reminded.id], in: &reminded.tasks, now: now, calendar: calendar)
+check("an occurrence with a new reminder is kept", reminded.tasks.count == 2)
+var reruled = completedSeries()
+reruled.tasks[1].recurrence = .monthly
+TaskOperations.setStatus(.todo, for: [reruled.id], in: &reruled.tasks, now: now, calendar: calendar)
+check("an occurrence with a new rule is kept", reruled.tasks.count == 2 && reruled.tasks[1].recurrence == .monthly)
+var deletedNext = completedSeries()
+deletedNext.tasks.removeLast()
+TaskOperations.setStatus(.todo, for: [deletedNext.id], in: &deletedNext.tasks, now: now, calendar: calendar)
+check("reopening after the occurrence was deleted takes the rule back", deletedNext.tasks[0].recurrence == .daily && deletedNext.tasks[0].nextOccurrenceID == nil)
+var legacyLink = completedSeries()
+legacyLink.tasks[0].nextOccurrenceDueDate = nil
+legacyLink.tasks[0].nextOccurrenceRule = nil
+TaskOperations.setStatus(.todo, for: [legacyLink.id], in: &legacyLink.tasks, now: now, calendar: calendar)
+check("a link saved by an older version never removes the occurrence", legacyLink.tasks.count == 2)
+
+print("Duplicating")
+var linked = completedSeries()
+var duplicate = linked.tasks[0].duplicated(now: now)
+check("a copy has its own identity", duplicate.id != linked.id && duplicate.createdAt == now)
+check("a copy doesn't claim the original's occurrence", duplicate.nextOccurrenceID == nil && duplicate.nextOccurrenceRule == nil && duplicate.nextOccurrenceDueDate == nil)
+linked.tasks.append(duplicate)
+TaskOperations.setStatus(.todo, for: [duplicate.id], in: &linked.tasks, now: now, calendar: calendar)
+check("reopening a copy leaves the occurrence alone", linked.tasks.count == 3)
+duplicate = TaskItem(title: "x", subtasks: [Subtask(title: "s", isDone: true)], attachments: [Attachment(kind: .link, name: "a.b", location: "https://a.b")]).duplicated(now: now)
+check("a copy keeps subtask state, with fresh ids", duplicate.subtasks.first?.isDone == true && duplicate.attachments.count == 1)
+
+print("Files that were edited by hand")
+func rule(_ json: String) -> RecurrenceRule? { try? JSONDecoder().decode(RecurrenceRule.self, from: Data(json.utf8)) }
+let badWeekday = rule(#"{"frequency":"weekly","interval":1,"weekdays":[9,0,2,2]}"#)
+check("impossible weekdays are dropped", badWeekday?.weekdays == [2], "\(String(describing: badWeekday))")
+check("a cleaned rule can be described", badWeekday?.summary.isEmpty == false)
+let hugeInterval = rule(#"{"frequency":"weekly","interval":9223372036854775807,"weekdays":[2]}"#)
+check("a huge interval is capped", hugeInterval?.interval == RecurrenceRule.maximumInterval)
+check("a capped rule still computes", hugeInterval?.nextDate(after: now, calendar: calendar) != nil)
+check("a zero interval becomes one", rule(#"{"frequency":"daily","interval":0,"weekdays":[]}"#)?.interval == 1)
+check("rules without weekdays still decode", rule(#"{"frequency":"daily","interval":2}"#)?.interval == 2)
+let encodedRule = try? JSONEncoder().encode(RecurrenceRule(frequency: .weekly, interval: 2, weekdays: [3]))
+check("rules round trip", encodedRule.flatMap { try? JSONDecoder().decode(RecurrenceRule.self, from: $0) } == RecurrenceRule(frequency: .weekly, interval: 2, weekdays: [3]))
+
+print("Newer file formats")
+let newerFolder = FileManager.default.temporaryDirectory.appendingPathComponent("TodoCoreChecks-\(UUID().uuidString)")
+do {
+    let newer = DataFileStore(directory: newerFolder)
+    try FileManager.default.createDirectory(at: newerFolder, withIntermediateDirectories: true)
+    try Data(#"{"version":99,"projects":[],"tasks":[{"id":"6F2C1C1E-0E59-4C38-9D57-5B0B7C1F2A10","title":"Future","status":"someNewStatus"}]}"#.utf8).write(to: newer.fileURL)
+    var version: Int?
+    do { _ = try newer.load() } catch DataFileError.newerFormat(let found) { version = found } catch {}
+    check("a newer file is recognised rather than called corrupt", version == 99, "\(String(describing: version))")
+} catch {
+    check("newer format threw \(error)", false)
+}
+try? FileManager.default.removeItem(at: newerFolder)
+
+print("Links")
+func linkLocation(_ text: String) -> String? { AttachmentLink.attachment(from: text)?.location }
+check("bare domains become https", linkLocation("example.com/page") == "https://example.com/page")
+check("ports are fine", linkLocation("example.com:8080/x") == "https://example.com:8080/x")
+check("http and https are kept", linkLocation("http://example.com") == "http://example.com" && linkLocation("https://www.example.com") == "https://www.example.com")
+check("localhost is allowed", linkLocation("http://localhost:3000") == "http://localhost:3000")
+check("mailto stays mailto", linkLocation("mailto:a@b.c") == "mailto:a@b.c")
+check("mailto is named after the address", AttachmentLink.attachment(from: "mailto:a@b.c")?.name == "a@b.c")
+check("www is dropped from the name", AttachmentLink.attachment(from: "https://www.example.com")?.name == "example.com")
+for refused in ["file://example.com/etc/passwd", "file:///Applications/Calculator.app", "ssh://evil.example.com", "smb://evil.example.com/share", "vnc://a.b", "myapp://do.thing/x", "FILE://example.com/x", "user:pw@evil.example.com", "https://user:pw@example.com", "javascript:alert(1)", "two words.com", "", "mailto:nobody"] {
+    check("refuses \(refused)", linkLocation(refused) == nil, linkLocation(refused) ?? "")
+}
+check("only web and mail links open", AttachmentLink.canOpen("https://a.b") && AttachmentLink.canOpen("HTTP://a.b") && AttachmentLink.canOpen("mailto:a@b.c"))
+check("a hand-edited file link won't open", !AttachmentLink.canOpen("file:///Applications/Calculator.app") && !AttachmentLink.canOpen("smb://a.b/c") && !AttachmentLink.canOpen("not a url"))
+
+print("Attachment paths")
+let vault = FileManager.default.temporaryDirectory.appendingPathComponent("TodoCoreChecks-\(UUID().uuidString)/Attachments")
+check("a dated file resolves inside the folder", AttachmentFiles.url(forLocation: "2026-11-02/a.pdf", in: vault)?.lastPathComponent == "a.pdf")
+check("an old flat file resolves", AttachmentFiles.url(forLocation: "a.pdf", in: vault) != nil)
+check("a name with dots is still a name", AttachmentFiles.url(forLocation: "2026-11-02/a..b.pdf", in: vault) != nil)
+check("climbing out is refused", AttachmentFiles.url(forLocation: "../../../../../../Applications/Calculator.app", in: vault) == nil)
+check("climbing out from a subfolder is refused", AttachmentFiles.url(forLocation: "2026-11-02/../../tasks.json", in: vault) == nil)
+check("an absolute path can't escape", AttachmentFiles.url(forLocation: "/etc/passwd", in: vault)?.path.hasSuffix("Attachments/etc/passwd") == true)
+check("the folder itself isn't a file", AttachmentFiles.url(forLocation: "", in: vault) == nil && AttachmentFiles.url(forLocation: ".", in: vault) == nil)
+
+print("Keeping attachments safe")
+let safeFolder = FileManager.default.temporaryDirectory.appendingPathComponent("TodoCoreChecks-\(UUID().uuidString)")
+do {
+    let fm = FileManager.default
+    let safe = DataFileStore(directory: safeFolder)
+    check("no data file means nothing can be cleaned", safe.referencedAttachmentPaths() == nil)
+    func withAttachment(_ path: String) -> AppData {
+        AppData(tasks: [TaskItem(title: "x", attachments: [
+            Attachment(kind: .file, name: "f", location: path),
+            Attachment(kind: .link, name: "a.b", location: "https://a.b")
+        ])])
+    }
+    try safe.save(withAttachment("2026-01-01/live.pdf"))
+    check("the live file's paths count, links don't", safe.referencedAttachmentPaths() == ["2026-01-01/live.pdf"])
+    func writeBackup(_ day: String, _ data: Data) throws {
+        let folder = safe.backupsDirectory.appendingPathComponent(day)
+        try fm.createDirectory(at: folder, withIntermediateDirectories: true)
+        try data.write(to: folder.appendingPathComponent("tasks.json"))
+    }
+    let backupStore = DataFileStore(directory: safe.backupsDirectory.appendingPathComponent("2026-01-02"))
+    try backupStore.save(withAttachment("2026-01-01/backed-up.pdf"))
+    check("backups keep their files alive", safe.referencedAttachmentPaths() == ["2026-01-01/live.pdf", "2026-01-01/backed-up.pdf"])
+    try writeBackup("2026-01-03", Data("broken".utf8))
+    check("an unreadable backup stops cleaning", safe.referencedAttachmentPaths() == nil)
+    try fm.removeItem(at: safe.backupsDirectory.appendingPathComponent("2026-01-03"))
+    try Data("{}".utf8).write(to: safeFolder.appendingPathComponent("tasks.unreadable-1-abc.json"))
+    check("a quarantined file stops cleaning", safe.referencedAttachmentPaths() == nil)
+    try fm.removeItem(at: safeFolder.appendingPathComponent("tasks.unreadable-1-abc.json"))
+    check("cleaning resumes once it's dealt with", safe.referencedAttachmentPaths() != nil)
+
+    let folderCutoff = DatedFolder.name(for: calendar.date(byAdding: .day, value: -30, to: now)!, calendar: calendar)
+    check("the cut-off is thirty days back", folderCutoff == "2026-09-23", folderCutoff)
+    let recentFiles = safeFolder.appendingPathComponent("Recent")
+    for path in ["2026-10-20/recent.pdf", "2026-01-01/old.pdf", "flat.pdf"] {
+        let url = recentFiles.appendingPathComponent(path)
+        try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("x".utf8).write(to: url)
+    }
+    AttachmentFiles.removeUnreferenced(in: recentFiles, keeping: [], keepingFoldersFrom: folderCutoff)
+    check("recently attached files get a grace period", fm.fileExists(atPath: recentFiles.appendingPathComponent("2026-10-20/recent.pdf").path))
+    check("old orphans still go", !fm.fileExists(atPath: recentFiles.appendingPathComponent("2026-01-01").path) && !fm.fileExists(atPath: recentFiles.appendingPathComponent("flat.pdf").path))
+
+    for day in ["2026-01-05", "2026-01-06", "2026-01-07", "2026-01-08"] { try writeBackup(day, Data("{}".utf8)) }
+    try fm.createDirectory(at: safe.backupsDirectory.appendingPathComponent("my-notes"), withIntermediateDirectories: true)
+    safe.pruneBackups(keeping: 2)
+    let remaining = try fm.contentsOfDirectory(atPath: safe.backupsDirectory.path).sorted()
+    check("pruning keeps the newest and anything it doesn't recognise", remaining == ["2026-01-07", "2026-01-08", "my-notes"], "\(remaining)")
+} catch {
+    check("keeping attachments threw \(error)", false)
+}
+try? FileManager.default.removeItem(at: safeFolder)
+
+print("Moving without running out of room")
+var crowded = [TaskItem(title: "a", sortOrder: 0), TaskItem(title: "b", sortOrder: 0), TaskItem(title: "z", sortOrder: 0), TaskItem(title: "t", sortOrder: 0)]
+TaskOperations.move(crowded[3].id, before: crowded[2].id, in: crowded, tasks: &crowded)
+check("a drop among equal orders lands where it was dropped", TaskQuery(scope: .all).run(on: crowded, projects: [], now: now, calendar: calendar).map(\.title) == ["a", "b", "t", "z"], "\(TaskQuery(scope: .all).run(on: crowded, projects: [], now: now, calendar: calendar).map(\.title))")
+var narrowing = [TaskItem(title: "a", sortOrder: 1), TaskItem(title: "b", sortOrder: 2), TaskItem(title: "c", sortOrder: 3)]
+var narrowingHeld = true
+for round in 0..<200 {
+    let shownNow = TaskQuery(scope: .all).run(on: narrowing, projects: [], now: now, calendar: calendar)
+    let last = shownNow[2], middle = shownNow[1]
+    TaskOperations.move(last.id, before: middle.id, in: shownNow, tasks: &narrowing)
+    let after = TaskQuery(scope: .all).run(on: narrowing, projects: [], now: now, calendar: calendar).map(\.id)
+    if after != [shownNow[0].id, last.id, middle.id] { narrowingHeld = false; print("    broke at drop \(round)"); break }
+}
+check("two hundred drops into the same gap all land correctly", narrowingHeld)
+var boundaryTasks = [TaskItem(title: "a", sortOrder: 5), TaskItem(title: "c", sortOrder: 20), TaskItem(title: "done", status: .done, sortOrder: 3, completedAt: now)]
+let boundaryShown = TaskQuery(scope: .all).run(on: boundaryTasks, projects: [], now: now, calendar: calendar)
+TaskOperations.move(boundaryTasks[0].id, before: boundaryTasks[2].id, in: boundaryShown, tasks: &boundaryTasks)
+check("the open/finished boundary still works", TaskQuery(scope: .all).run(on: boundaryTasks, projects: [], now: now, calendar: calendar).map(\.title) == ["c", "a", "done"])
+
+print("Small model helpers")
+check("a task with nothing in it is blank", TaskItem(title: "  ", notes: "\n").isBlank)
+check("a due date alone is still blank", TaskItem(title: "", dueDate: today).isBlank)
+check("a title, notes or subtask isn't", !TaskItem(title: "x").isBlank && !TaskItem(title: "", notes: "n").isBlank && !TaskItem(title: "", subtasks: [Subtask(title: "s")]).isBlank)
+check("display title falls back", TaskItem(title: "").displayTitle == "Untitled" && TaskItem(title: "x").displayTitle == "x")
+// 2026-10-23 is a Friday; `calendar` starts weeks on Monday.
+check("next week from Friday is Monday", DueDateText.nextWeek(from: now, calendar: calendar) == date(2026, 10, 26))
+check("next week from Monday is the following Monday", DueDateText.nextWeek(from: date(2026, 10, 26, 9), calendar: calendar) == date(2026, 11, 2))
+
+print("Dashboard and sub-projects")
+let subtreeStats = DashboardStats(
+    tasks: [TaskItem(title: "p", status: .done, projectID: parent.id, completedAt: now), TaskItem(title: "c", projectID: child.id), TaskItem(title: "g", projectID: grandchild.id)],
+    projects: tree, now: now, calendar: calendar
+)
+let parentEntry = subtreeStats.projects.first { $0.project.id == parent.id }
+check("a parent's progress includes its sub-projects", parentEntry?.total == 3 && parentEntry?.done == 1, "\(String(describing: parentEntry))")
+check("a sub-project counts only its own branch", subtreeStats.projects.first { $0.project.id == grandchild.id }?.total == 1)
+
 print("")
 if failures == 0 {
     print("All \(checks) checks passed.")

@@ -2,7 +2,6 @@ import SwiftUI
 import TodoCore
 
 struct TaskListView: View {
-    @EnvironmentObject private var store: TaskStore
     @EnvironmentObject private var state: AppState
 
     let tasks: [TaskItem]

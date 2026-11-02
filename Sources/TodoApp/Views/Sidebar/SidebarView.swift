@@ -218,6 +218,7 @@ struct SidebarRow: View {
             }
             return state.handleDrop(items, on: item)
         } isTargeted: { isDropTarget = $0 && acceptsDrops }
+        .accessibleRow(title, isSelected: isSelected) { state.select(item) }
         .animation(Theme.Motion.quick, value: isSelected)
     }
 

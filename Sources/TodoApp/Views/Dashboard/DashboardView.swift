@@ -85,10 +85,10 @@ struct DashboardView: View {
     /// Four tiles in a row when there's room, otherwise a 2 × 2 grid — never squeezed labels.
     @ViewBuilder
     private func metrics(_ stats: DashboardStats, inOneRow: Bool) -> some View {
-        let dueToday = MetricTile(value: stats.dueToday, label: "Due today") { state.select(.today) }
-        let overdue = MetricTile(value: stats.overdue, label: "Overdue", tint: stats.overdue > 0 ? Theme.red : nil) { state.select(.today) }
-        let completedToday = MetricTile(value: stats.completedToday, label: "Completed today") { state.select(.completed) }
-        let thisWeek = MetricTile(value: stats.completedThisWeek, label: "Done this week") { state.select(.completed) }
+        let dueToday = MetricTile(value: stats.dueToday, label: "Due today") { state.selectIfShown(.today) }
+        let overdue = MetricTile(value: stats.overdue, label: "Overdue", tint: stats.overdue > 0 ? Theme.red : nil) { state.selectIfShown(.today) }
+        let completedToday = MetricTile(value: stats.completedToday, label: "Completed today") { state.selectIfShown(.completed) }
+        let thisWeek = MetricTile(value: stats.completedThisWeek, label: "Done this week") { state.selectIfShown(.completed) }
 
         if inOneRow {
             HStack(spacing: 0) {
@@ -285,7 +285,7 @@ struct UpNextRow: View {
             HStack(spacing: 12) {
                 Circle().fill(Theme.checkboxFill).frame(width: 9, height: 9)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(task.title.isEmpty ? "Untitled" : task.title)
+                    Text(task.displayTitle)
                         .font(Theme.Font.body)
                         .foregroundColor(Theme.primaryText)
                         .lineLimit(1)

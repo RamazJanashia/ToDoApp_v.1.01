@@ -69,12 +69,12 @@ struct RootView: View {
             Text(deletionMessage)
         }
         .alert(
-            "Couldn’t open your tasks",
-            isPresented: Binding(get: { store.loadIssue != nil }, set: { if !$0 { store.loadIssue = nil } })
+            store.alert?.title ?? "",
+            isPresented: Binding(get: { store.alert != nil }, set: { if !$0 { store.alert = nil } })
         ) {
-            Button("OK") { store.loadIssue = nil }
+            Button("OK") { store.alert = nil }
         } message: {
-            Text(store.loadIssue ?? "")
+            Text(store.alert?.message ?? "")
         }
         .onAppear { store.undoManager = undoManager }
         .onChange(of: undoManager) { store.undoManager = $0 }
@@ -92,11 +92,22 @@ struct RootView: View {
     private static let sidebarRange: ClosedRange<Double> = 200...340
     private static let inspectorRange: ClosedRange<Double> = 290...480
 
-    /// On small windows the side columns give way (down to their minimums) so the task list
-    /// keeps room to breathe; on larger windows they use the widths the user dragged them to.
+    /// The columns use the widths the user dragged them to. When that would leave the task list
+    /// too little room, they give way down to their minimums, the inspector first.
     private func columnWidths(for total: Double) -> (sidebar: Double, inspector: Double) {
-        let sidebar = min(sidebarWidth, max(Self.sidebarRange.lowerBound, total * 0.19))
-        let inspector = min(inspectorWidth, max(Self.inspectorRange.lowerBound, total * 0.25))
+        var sidebar = min(max(sidebarWidth, Self.sidebarRange.lowerBound), Self.sidebarRange.upperBound)
+        var inspector = min(max(inspectorWidth, Self.inspectorRange.lowerBound), Self.inspectorRange.upperBound)
+        var excess = Self.centerMinWidth - total
+            + (state.isSidebarVisible ? sidebar + 1 : 0)
+            + (state.isInspectorVisible ? inspector + 1 : 0)
+        if excess > 0, state.isInspectorVisible {
+            let cut = min(excess, inspector - Self.inspectorRange.lowerBound)
+            inspector -= cut
+            excess -= cut
+        }
+        if excess > 0, state.isSidebarVisible {
+            sidebar -= min(excess, sidebar - Self.sidebarRange.lowerBound)
+        }
         return (sidebar, inspector)
     }
 
@@ -109,6 +120,15 @@ struct RootView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .navigation) {
+            IconButton(
+                systemName: "sidebar.left",
+                size: 15,
+                help: state.isSidebarVisible ? "Hide Sidebar (⌃⌘S)" : "Show Sidebar (⌃⌘S)"
+            ) {
+                withAnimation(Theme.Motion.standard) { state.isSidebarVisible.toggle() }
+            }
+        }
         ToolbarItem(placement: .principal) {
             Text(state.windowTitle)
                 .font(.system(size: 13, weight: .medium))

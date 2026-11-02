@@ -112,6 +112,7 @@ struct SubtaskRow: View {
             .buttonStyle(.plain)
             .opacity(hovering ? 1 : 0)
             .help("Delete Subtask")
+            .accessibilityLabel("Delete Subtask")
         }
         .padding(.vertical, 8)
         .onHover { hovering = $0 }
@@ -164,7 +165,7 @@ struct AttachmentsSection: View {
                 }
                 .frame(height: 36)
                 if linkIsInvalid {
-                    Text("That doesn’t look like a web address.")
+                    Text("That doesn’t look like a web or mail address.")
                         .font(Theme.Font.small)
                         .foregroundColor(Theme.red)
                         .padding(.leading, 40)
@@ -193,8 +194,8 @@ struct AttachmentsSection: View {
             let files = urls.filter(\.isFileURL)
             let links = urls.filter { !$0.isFileURL }
             store.attachFiles(files, to: taskID)
-            links.forEach { store.attachLink($0.absoluteString, to: taskID) }
-            return !urls.isEmpty
+            let accepted = links.filter { store.attachLink($0.absoluteString, to: taskID) }
+            return !files.isEmpty || !accepted.isEmpty
         } isTargeted: { isDropTarget = $0 }
     }
 
@@ -264,6 +265,7 @@ struct AttachmentRow: View {
             .buttonStyle(.plain)
             .opacity(hovering ? 1 : 0)
             .help("Remove Attachment")
+            .accessibilityLabel("Remove Attachment")
         }
         .padding(.vertical, 6)
         .padding(.horizontal, 6)
@@ -273,10 +275,13 @@ struct AttachmentRow: View {
         .onTapGesture(perform: open)
         .onHover { hovering = $0 }
         .help(attachment.kind == .link ? attachment.location : "Open \(attachment.name)")
+        .accessibleRow("Open \(attachment.name)", action: open)
         .contextMenu {
             Button("Open", action: open)
-            if attachment.kind == .file, let url {
-                Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+            if attachment.kind == .file {
+                if let url {
+                    Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+                }
             } else {
                 Button("Copy Link") {
                     NSPasteboard.general.clearContents()

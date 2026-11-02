@@ -21,6 +21,7 @@ struct AppCommands: Commands {
         CommandGroup(replacing: .textEditing) {
             Button("Search Tasks") { state.focusSearch() }
                 .keyboardShortcut("f", modifiers: .command)
+                .disabled(!state.shows(.toolbarSearch))
         }
 
         CommandMenu("Task") {
@@ -54,11 +55,11 @@ struct AppCommands: Commands {
             .disabled(selected == nil)
 
             Menu("Due Date") {
-                Button("Today") { setDue(offset: 0) }
+                Button("Today") { setDue(.today) }
                     .keyboardShortcut("t", modifiers: [.command, .option])
-                Button("Tomorrow") { setDue(offset: 1) }
+                Button("Tomorrow") { setDue(.tomorrow) }
                     .keyboardShortcut("t", modifiers: [.command, .option, .shift])
-                Button("Next Week") { setDue(offset: 7) }
+                Button("Next Week") { setDue(.nextWeek) }
                 Divider()
                 Button("Remove Due Date") {
                     if let id = state.selectedTaskID { state.setDueDay(nil, for: [id]) }
@@ -121,9 +122,8 @@ struct AppCommands: Commands {
             .disabled(!state.shows(item.element))
     }
 
-    private func setDue(offset: Int) {
+    private func setDue(_ due: QuickDue) {
         guard let id = state.selectedTaskID else { return }
-        let today = Calendar.current.startOfDay(for: Date())
-        state.setDueDay(Calendar.current.date(byAdding: .day, value: offset, to: today), for: [id])
+        state.setDue(due, for: [id])
     }
 }
