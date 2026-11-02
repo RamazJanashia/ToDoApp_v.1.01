@@ -7,68 +7,143 @@ struct SidebarView: View {
 
     @State private var hoveringProjects = false
 
+    private var showsWorkspace: Bool {
+        WorkspaceElement.Group.sidebar.elements.contains { $0 != .projects && state.shows($0) }
+    }
+
     var body: some View {
         let now = Date()
-        ScrollView {
-            VStack(alignment: .leading, spacing: 4) {
-                SectionHeader("Workspace")
-                    .padding(.horizontal, 10)
-                    .padding(.bottom, 8)
-
-                SidebarRow(item: .inbox, icon: "tray", title: "Inbox", count: count(.inbox, now))
-                SidebarRow(item: .today, icon: "sun.max", title: "Today", count: count(.today, now))
-                SidebarRow(item: .upcoming, icon: "calendar", title: "Upcoming", count: count(.upcoming, now))
-                SidebarRow(item: .completed, icon: "checkmark.circle", title: "Completed")
-                SidebarRow(item: .dashboard, icon: "square.grid.2x2", title: "Dashboard")
-
-                HStack {
-                    SectionHeader("Projects")
-                    Spacer()
-                    IconButton(systemName: "plus", size: 12, weight: .medium, help: "New Project (⇧⌘N)") {
-                        state.projectEditor = ProjectEditorRequest(projectID: nil)
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 4) {
+                    if showsWorkspace {
+                        SectionHeader("Workspace")
+                            .padding(.horizontal, 10)
+                            .padding(.bottom, 8)
+                            .contextMenu { customizeButton }
                     }
-                    .opacity(hoveringProjects || store.projects.isEmpty ? 1 : 0)
-                }
-                .padding(.leading, 10)
-                .padding(.trailing, 2)
-                .padding(.top, 26)
-                .padding(.bottom, 4)
 
-                ForEach(store.projects) { project in
-                    SidebarRow(
-                        item: .project(project.id),
-                        icon: project.icon,
-                        tint: project.color.color,
-                        title: project.name,
-                        count: count(.project(project.id), now)
-                    )
-                    .draggable("project:\(project.id.uuidString)")
-                    .contextMenu {
-                        Button("Edit Project…") { state.projectEditor = ProjectEditorRequest(projectID: project.id) }
-                        Divider()
-                        Button("Delete Project…", role: .destructive) { state.projectPendingDeletion = project }
+                    place(.allTasks, icon: "tray", title: "All Tasks", count: count(.allOpen, now))
+                    place(.today, icon: "sun.max", title: "Today", count: count(.today, now))
+                    place(.upcoming, icon: "calendar", title: "Upcoming", count: count(.upcoming, now))
+                    place(.completed, icon: "checkmark.circle", title: "Completed")
+                    place(.dashboard, icon: "square.grid.2x2", title: "Dashboard")
+
+                    if state.shows(.projects) {
+                        projectsHeader
+                        ForEach(store.projects.outline(collapsed: state.collapsedProjects)) { row in
+                            projectRow(row, now: now)
+                        }
+                        if store.projects.isEmpty {
+                            Text("Create a project to group related tasks.")
+                                .font(Theme.Font.caption)
+                                .foregroundColor(Theme.tertiaryText)
+                                .padding(.horizontal, 10)
+                                .padding(.top, 4)
+                        }
                     }
                 }
-
-                if store.projects.isEmpty {
-                    Text("Create a project to group related tasks.")
-                        .font(Theme.Font.caption)
-                        .foregroundColor(Theme.tertiaryText)
-                        .padding(.horizontal, 10)
-                        .padding(.top, 4)
-                }
+                .padding(.horizontal, 12)
+                .padding(.top, 20)
+                .padding(.bottom, 20)
+                .onHover { hoveringProjects = $0 }
             }
-            .padding(.horizontal, 12)
-            .padding(.top, 20)
-            .padding(.bottom, 20)
-            .onHover { hoveringProjects = $0 }
+            .scrollIndicators(.never)
+            CustomizeButton()
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
         }
-        .scrollIndicators(.never)
         .background(Theme.background)
+    }
+
+    @ViewBuilder
+    private func place(_ item: SidebarItem, icon: String, title: String, count: Int? = nil) -> some View {
+        if state.shows(item.element) {
+            SidebarRow(item: item, icon: icon, title: title, count: count)
+                .contextMenu {
+                    Button("Hide \(title)") { state.setVisible(false, item.element) }
+                    customizeButton
+                }
+        }
+    }
+
+    private var customizeButton: some View {
+        Button("Customize…") { state.openSettings() }
+    }
+
+    private var projectsHeader: some View {
+        HStack {
+            SectionHeader("Projects")
+            Spacer()
+            IconButton(systemName: "plus", size: 12, weight: .medium, help: "New Project (⇧⌘N)") {
+                state.projectEditor = ProjectEditorRequest(projectID: nil)
+            }
+            .opacity(hoveringProjects || store.projects.isEmpty ? 1 : 0)
+        }
+        .padding(.leading, 10)
+        .padding(.trailing, 2)
+        .padding(.top, showsWorkspace ? 26 : 0)
+        .padding(.bottom, 4)
+        .contextMenu {
+            Button("Hide Projects") { state.setVisible(false, .projects) }
+            customizeButton
+        }
+    }
+
+    private func projectRow(_ row: ProjectOutlineRow, now: Date) -> some View {
+        let project = row.project
+        return SidebarRow(
+            item: .project(project.id),
+            icon: project.icon,
+            tint: project.color.color,
+            title: project.name,
+            count: count(.projects(store.projects.subtreeIDs(of: project.id)), now),
+            depth: row.depth,
+            isCollapsed: row.hasChildren ? state.collapsedProjects.contains(project.id) : nil
+        )
+        .draggable("project:\(project.id.uuidString)")
+        .contextMenu {
+            Button("New Sub-project…") {
+                state.projectEditor = ProjectEditorRequest(projectID: nil, parentID: project.id)
+            }
+            Button("Edit Project…") { state.projectEditor = ProjectEditorRequest(projectID: project.id) }
+            Divider()
+            Button("Delete Project…", role: .destructive) { state.projectPendingDeletion = project }
+        }
     }
 
     private func count(_ scope: TaskScope, _ now: Date) -> Int {
         TaskQuery.openCount(in: scope, tasks: store.tasks, now: now)
+    }
+}
+
+/// Always in view at the foot of the sidebar, so hidden things can always be brought back.
+struct CustomizeButton: View {
+    @EnvironmentObject private var state: AppState
+
+    @State private var hovering = false
+
+    var body: some View {
+        Button {
+            state.openSettings()
+        } label: {
+            HStack(spacing: 11) {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.system(size: 14))
+                    .frame(width: 20)
+                Text("Customize")
+                    .font(Theme.Font.body)
+                Spacer(minLength: 0)
+            }
+            .foregroundColor(hovering ? Theme.primaryText : Theme.secondaryText)
+            .padding(.horizontal, 10)
+            .frame(height: 34)
+            .rowHighlight(selected: false, hovering: hovering)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .help("Choose what the app shows (⌘,)")
     }
 }
 
@@ -81,11 +156,17 @@ struct SidebarRow: View {
     var tint: Color?
     let title: String
     var count: Int?
+    /// How many levels this project sits under others.
+    var depth = 0
+    /// `nil` for a row with nothing under it.
+    var isCollapsed: Bool?
 
     @State private var hovering = false
     @State private var isDropTarget = false
 
     private var isSelected: Bool { state.sidebarSelection == item && !state.isSearching }
+
+    private var acceptsDrops: Bool { item != .dashboard && item != .allTasks }
 
     var body: some View {
         HStack(spacing: 11) {
@@ -104,8 +185,22 @@ struct SidebarRow: View {
                     .monospacedDigit()
                     .foregroundColor(Theme.secondaryText)
             }
+            if let isCollapsed, case .project(let id) = item {
+                Button {
+                    withAnimation(Theme.Motion.quick) { state.toggleCollapsed(id) }
+                } label: {
+                    Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                        .font(.system(size: 9.5, weight: .semibold))
+                        .foregroundColor(Theme.tertiaryText)
+                        .frame(width: 16, height: 20)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(isCollapsed ? "Show Sub-projects" : "Hide Sub-projects")
+            }
         }
-        .padding(.horizontal, 10)
+        .padding(.leading, 10 + CGFloat(depth) * 16)
+        .padding(.trailing, 10)
         .frame(height: 38)
         .rowHighlight(selected: isSelected, hovering: hovering)
         .overlay(
@@ -122,7 +217,7 @@ struct SidebarRow: View {
                 return true
             }
             return state.handleDrop(items, on: item)
-        } isTargeted: { isDropTarget = $0 && item != .dashboard }
+        } isTargeted: { isDropTarget = $0 && acceptsDrops }
         .animation(Theme.Motion.quick, value: isSelected)
     }
 

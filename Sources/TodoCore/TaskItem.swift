@@ -22,7 +22,8 @@ public struct Attachment: Identifiable, Codable, Hashable, Sendable {
     public var kind: Kind
     /// What the user sees: the original file name, or the link's host.
     public var name: String
-    /// Files: the name of the copy inside the attachments folder. Links: the absolute URL string.
+    /// Files: the copy's path inside the attachments folder ("2026-11-02/<id>-report.pdf", or just the
+    /// file name for files attached before dated folders). Links: the absolute URL string.
     public var location: String
     public var addedAt: Date
 
@@ -129,6 +130,17 @@ public struct TaskItem: Identifiable, Codable, Hashable, Sendable {
     public var isCompleted: Bool { status == .done }
 
     public var completedSubtaskCount: Int { subtasks.filter(\.isDone).count }
+
+    /// 0...1. A finished task counts in full; otherwise its share of finished subtasks.
+    public var progress: Double {
+        if isCompleted { return 1 }
+        return subtasks.isEmpty ? 0 : Double(completedSubtaskCount) / Double(subtasks.count)
+    }
+
+    /// Progress across a list, where half the subtasks of a task count as half a task.
+    public static func progress(of tasks: [TaskItem]) -> Double {
+        tasks.isEmpty ? 0 : tasks.reduce(0) { $0 + $1.progress } / Double(tasks.count)
+    }
 
     public mutating func setCompleted(_ completed: Bool, at date: Date = Date()) {
         setStatus(completed ? .done : .todo, at: date)

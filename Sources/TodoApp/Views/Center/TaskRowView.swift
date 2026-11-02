@@ -15,7 +15,7 @@ struct TaskRowView: View {
     private var isSelected: Bool { state.selectedTaskID == task.id }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 14) {
+        HStack(alignment: .top, spacing: 14) {
             CheckCircle(isDone: task.isCompleted) {
                 withAnimation(Theme.Motion.standard) { state.toggleCompleted(task.id) }
             }
@@ -25,14 +25,19 @@ struct TaskRowView: View {
                     .font(Theme.Font.rowTitle)
                     .foregroundColor(task.isCompleted || task.title.isEmpty ? Theme.tertiaryText : Theme.primaryText)
                     .strikethrough(task.isCompleted, color: Theme.tertiaryText)
-                    .lineLimit(1)
+                    .fixedSize(horizontal: false, vertical: true)
                 TaskMetaLine(task: task, hidesDueToday: state.scope == .today)
+                SubtaskProgress(task: task)
+                    .frame(maxWidth: 220)
+                    .padding(.top, 3)
             }
 
             Spacer(minLength: 12)
 
             DetailsButton(taskID: task.id, isVisible: hovering)
-            PriorityFlag(priority: task.priority, dimmed: task.isCompleted)
+            if state.shows(.rowPriority) {
+                PriorityFlag(priority: task.priority, dimmed: task.isCompleted)
+            }
         }
         .padding(.vertical, 14)
         .background(
@@ -61,9 +66,23 @@ struct TaskRowView: View {
     }
 }
 
+/// How far a task's subtasks have come. Shows nothing for a task without subtasks.
+struct SubtaskProgress: View {
+    @EnvironmentObject private var state: AppState
+
+    let task: TaskItem
+
+    var body: some View {
+        if state.shows(.rowProgress), !task.subtasks.isEmpty {
+            ProgressLine(fraction: task.progress)
+        }
+    }
+}
+
 /// Project · due date · repeat · subtasks · attachments, in quiet grey.
 struct TaskMetaLine: View {
     @EnvironmentObject private var store: TaskStore
+    @EnvironmentObject private var state: AppState
 
     let task: TaskItem
     var hidesDueToday = false
@@ -78,10 +97,14 @@ struct TaskMetaLine: View {
     }
 
     var body: some View {
-        let project = store.project(with: task.projectID)
-        let due = dueLabel
-        let hasAnything = project != nil || due != nil || task.recurrence != nil
-            || !task.subtasks.isEmpty || !task.attachments.isEmpty || !task.notes.isEmpty
+        let project = state.shows(.rowProject) ? store.project(with: task.projectID) : nil
+        let due = state.shows(.rowDueDate) ? dueLabel : nil
+        let hasAnything = project != nil || due != nil
+            || (task.recurrence != nil && state.shows(.rowRepeat))
+            || (task.reminderOffset != nil && task.dueDate != nil && state.shows(.rowReminder))
+            || (!task.subtasks.isEmpty && state.shows(.rowSubtasks))
+            || (!task.attachments.isEmpty && state.shows(.rowAttachments))
+            || (!task.notes.isEmpty && state.shows(.rowNotes) && project == nil && due == nil)
 
         if hasAnything {
             // When space is tight, drop the project name, then the small icons, rather than
@@ -110,19 +133,19 @@ struct TaskMetaLine: View {
                     .foregroundColor(due.overdue ? Theme.red.opacity(0.9) : Theme.secondaryText)
             }
             if detail == .full || due == nil {
-                if task.recurrence != nil {
+                if task.recurrence != nil, state.shows(.rowRepeat) {
                     Image(systemName: "repeat").help(task.recurrence?.summary ?? "")
                 }
-                if task.reminderOffset != nil, task.dueDate != nil {
+                if task.reminderOffset != nil, task.dueDate != nil, state.shows(.rowReminder) {
                     Image(systemName: "bell")
                 }
-                if !task.subtasks.isEmpty {
+                if !task.subtasks.isEmpty, state.shows(.rowSubtasks) {
                     Label("\(task.completedSubtaskCount)/\(task.subtasks.count)", systemImage: "checklist")
                 }
-                if !task.attachments.isEmpty {
+                if !task.attachments.isEmpty, state.shows(.rowAttachments) {
                     Label("\(task.attachments.count)", systemImage: "paperclip")
                 }
-                if !task.notes.isEmpty && project == nil && due == nil {
+                if !task.notes.isEmpty && project == nil && due == nil && state.shows(.rowNotes) {
                     Image(systemName: "text.alignleft")
                 }
             }
@@ -198,10 +221,12 @@ struct TaskContextMenu: View {
         }
 
         Menu("Move to") {
-            Button("Inbox") { state.move([task.id], toProject: nil) }
+            Button("No Project") { state.move([task.id], toProject: nil) }
             if !store.projects.isEmpty { Divider() }
-            ForEach(store.projects) { project in
-                Button(project.name) { state.move([task.id], toProject: project.id) }
+            ForEach(store.projects.outline()) { row in
+                Button(String(repeating: "    ", count: row.depth) + row.project.name) {
+                    state.move([task.id], toProject: row.id)
+                }
             }
         }
 

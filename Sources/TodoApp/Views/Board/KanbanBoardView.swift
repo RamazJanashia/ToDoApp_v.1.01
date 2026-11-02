@@ -124,16 +124,18 @@ struct KanbanCard: View {
                     .font(.system(size: 13.5))
                     .foregroundColor(task.isCompleted || task.title.isEmpty ? Theme.tertiaryText : Theme.primaryText)
                     .strikethrough(task.isCompleted, color: Theme.tertiaryText)
-                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if hovering {
                     DetailsButton(taskID: task.id, isVisible: true)
                         .frame(width: 20, height: 18)
-                } else {
+                } else if state.shows(.rowPriority) {
                     PriorityFlag(priority: task.priority, dimmed: task.isCompleted)
                 }
             }
             TaskMetaLine(task: task)
+                .padding(.leading, 26)
+            SubtaskProgress(task: task)
                 .padding(.leading, 26)
         }
         .padding(12)

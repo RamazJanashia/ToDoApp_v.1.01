@@ -16,20 +16,11 @@ struct TaskListView: View {
     }
 
     var body: some View {
+        let sections = sections
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(sections) { section in
-                            if let title = section.title {
-                                ListSectionHeader(title: title, detail: section.detail, isWarning: section.isWarning)
-                            }
-                            ForEach(section.tasks) { task in
-                                TaskRowView(task: task, siblings: tasks)
-                                    .id(task.id)
-                            }
-                        }
-                    }
+                    sectionList(sections.filter { !$0.isCompletedHistory })
 
                     if tasks.isEmpty && !state.isComposing {
                         emptyState
@@ -40,6 +31,8 @@ struct TaskListView: View {
                         NewTaskComposer()
                             .id("composer")
                     }
+
+                    sectionList(sections.filter(\.isCompletedHistory))
                 }
                 .frame(maxWidth: Theme.Layout.readingWidth)
                 .padding(.horizontal, Theme.Layout.pageMargin)
@@ -53,6 +46,20 @@ struct TaskListView: View {
             }
             .onChange(of: state.selectedTaskID) { id in
                 if let id, tasks.contains(where: { $0.id == id }) { proxy.scrollTo(id) }
+            }
+        }
+    }
+
+    private func sectionList(_ sections: [TaskSection]) -> some View {
+        LazyVStack(alignment: .leading, spacing: 0) {
+            ForEach(sections) { section in
+                if let title = section.title {
+                    ListSectionHeader(title: title, detail: section.detail, isWarning: section.isWarning)
+                }
+                ForEach(section.tasks) { task in
+                    TaskRowView(task: task, siblings: tasks)
+                        .id(task.id)
+                }
             }
         }
     }
@@ -112,7 +119,8 @@ struct NewTaskComposer: View {
                     Circle()
                         .stroke(Theme.tertiaryText, lineWidth: 1.2)
                         .frame(width: 20, height: 20)
-                    TextField("New task", text: $title)
+                    TextField("New task", text: $title, axis: .vertical)
+                        .lineLimit(1...)
                         .textFieldStyle(.plain)
                         .font(Theme.Font.rowTitle)
                         .foregroundColor(Theme.primaryText)

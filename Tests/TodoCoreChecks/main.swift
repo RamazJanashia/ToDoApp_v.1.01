@@ -136,13 +136,14 @@ let tasks: [TaskItem] = [
 ]
 func titles(_ query: TaskQuery) -> [String] { query.run(on: tasks, projects: [work], now: now, calendar: calendar).map(\.title) }
 
-check("inbox: open first, today's completions kept, old ones hidden",
-      titles(TaskQuery(scope: .inbox)) == ["Inbox open", "Next week", "Inbox done today"], "\(titles(TaskQuery(scope: .inbox)))")
+let allOpen = titles(TaskQuery(scope: .allOpen))
+check("all tasks: open ones from everywhere, then today's completions, old ones hidden",
+      allOpen == ["Inbox open", "Due today", "Overdue", "Tomorrow", "Next week", "Inbox done today"], "\(allOpen)")
 check("today includes overdue", Set(titles(TaskQuery(scope: .today))) == ["Due today", "Overdue"])
 check("upcoming is strictly after today", titles(TaskQuery(scope: .upcoming)) == ["Tomorrow", "Next week"])
 check("completed newest first", titles(TaskQuery(scope: .completed)) == ["Inbox done today", "Inbox done last week"])
 check("project scope", Set(titles(TaskQuery(scope: .project(work.id)))) == ["Due today", "Overdue", "Tomorrow"])
-check("hide completed", !titles(TaskQuery(scope: .inbox, showCompleted: false)).contains("Inbox done today"))
+check("hide completed", !titles(TaskQuery(scope: .allOpen, showCompleted: false)).contains("Inbox done today"))
 check("priority sort", titles(TaskQuery(scope: .project(work.id), sort: .priority)).first == "Overdue")
 check("due date sort", titles(TaskQuery(scope: .project(work.id), sort: .dueDate)) == ["Overdue", "Due today", "Tomorrow"])
 check("priority filter", titles(TaskQuery(scope: .all, priorities: [.high])) == ["Overdue"])
@@ -162,6 +163,74 @@ check("relative labels", DueDateText.dayLabel(for: date(2026, 10, 22), now: now,
 // as it would if worked out on the 23rd when the reminder was scheduled.
 check("reminder wording is relative to when it fires",
       DueDateText.label(for: date(2026, 10, 24), hasTime: false, now: date(2026, 10, 24, 9), calendar: calendar) == "Today")
+
+print("Subtask progress")
+let half = TaskItem(title: "Half", subtasks: [Subtask(title: "a", isDone: true), Subtask(title: "b")])
+check("progress follows subtasks", half.progress == 0.5)
+check("no subtasks, not done, is zero", TaskItem(title: "x").progress == 0)
+check("a finished task counts in full", TaskItem(title: "x", status: .done, subtasks: [Subtask(title: "a")]).progress == 1)
+check("list progress averages tasks", TaskItem.progress(of: [half, TaskItem(title: "y", status: .done)]) == 0.75)
+check("empty list has no progress", TaskItem.progress(of: []) == 0)
+
+print("Sub-projects")
+let parent = Project(name: "Parent")
+let child = Project(name: "Child", parentID: parent.id)
+let grandchild = Project(name: "Grandchild", parentID: child.id)
+let loner = Project(name: "Loner")
+let tree = [grandchild, loner, child, parent]
+check("outline puts parents above children", tree.outline().map(\.project.name) == ["Loner", "Parent", "Child", "Grandchild"], "\(tree.outline().map(\.project.name))")
+check("outline depth", tree.outline().map(\.depth) == [0, 0, 1, 2])
+check("outline marks parents", tree.outline().map(\.hasChildren) == [false, true, true, false])
+check("collapsing hides everything below", tree.outline(collapsed: [parent.id]).map(\.project.name) == ["Loner", "Parent"])
+check("collapsing a leaf does nothing", tree.outline(collapsed: [loner.id]).count == 4)
+check("subtree includes itself and descendants", tree.subtreeIDs(of: parent.id) == [parent.id, child.id, grandchild.id])
+check("a project can't move inside itself", !tree.parentChoices(for: parent.id).contains { $0.id == grandchild.id } && tree.parentChoices(for: parent.id).map(\.id) == [loner.id])
+let orphan = Project(name: "Orphan", parentID: UUID())
+check("a missing parent means top level", [orphan].outline().first?.depth == 0)
+var loopA = Project(name: "A"), loopB = Project(name: "B", parentID: loopA.id)
+loopA.parentID = loopB.id
+check("a parent loop still shows every project once", [loopA, loopB].outline().count == 2)
+check("a parent loop ends", [loopA, loopB].subtreeIDs(of: loopA.id).count == 2)
+
+var moved = tree
+check("dropping beside a sub-project joins its parent", moved.moveProject(loner.id, before: child.id) && moved.first { $0.id == loner.id }?.parentID == parent.id)
+var cyclic = tree
+check("dropping a parent into its own subtree is refused", !cyclic.moveProject(parent.id, before: grandchild.id) && cyclic == tree)
+
+let inChild = TaskItem(title: "In child", projectID: child.id)
+let inParent = TaskItem(title: "In parent", projectID: parent.id)
+let elsewhere = TaskItem(title: "Elsewhere", projectID: loner.id)
+let nested = TaskScope.projects(tree.subtreeIDs(of: parent.id))
+check("a parent lists its sub-projects' tasks", Set(TaskQuery(scope: nested).run(on: [inChild, inParent, elsewhere], projects: tree, now: now, calendar: calendar).map(\.title)) == ["In child", "In parent"])
+check("a parent counts its sub-projects' tasks", TaskQuery.openCount(in: nested, tasks: [inChild, inParent, elsewhere], now: now, calendar: calendar) == 2)
+
+var deletingProjects = tree
+var deletingTasks = [inChild, elsewhere]
+TaskOperations.deleteProject(child.id, projects: &deletingProjects, tasks: &deletingTasks)
+check("deleting moves sub-projects up", deletingProjects.first { $0.id == grandchild.id }?.parentID == parent.id && deletingProjects.count == 3)
+check("deleting moves tasks to the parent", deletingTasks[0].projectID == parent.id)
+TaskOperations.deleteProject(loner.id, projects: &deletingProjects, tasks: &deletingTasks)
+check("deleting a top-level project leaves tasks without one", deletingTasks[1].projectID == nil)
+
+print("Completed by date in a project")
+let history: [TaskItem] = [
+    TaskItem(title: "Open", projectID: work.id, sortOrder: 1),
+    TaskItem(title: "Done today", status: .done, projectID: work.id, sortOrder: 2, completedAt: now),
+    TaskItem(title: "Done earlier", status: .done, projectID: work.id, sortOrder: 3, completedAt: date(2026, 10, 15, 9)),
+    TaskItem(title: "Done earlier later", status: .done, projectID: work.id, sortOrder: 4, completedAt: date(2026, 10, 15, 18)),
+    TaskItem(title: "Other project", status: .done, projectID: UUID(), sortOrder: 5, completedAt: now)
+]
+func historyTitles(_ query: TaskQuery) -> [String] { query.run(on: history, projects: [work], now: now, calendar: calendar).map(\.title) }
+check("old completions stay out by default", !historyTitles(TaskQuery(scope: .project(work.id))).contains("Done earlier"))
+let withHistory = TaskQuery(scope: .project(work.id), includesCompletedHistory: true).run(on: history, projects: [work], now: now, calendar: calendar)
+check("history brings them in, for this project only", withHistory.count == 4 && !withHistory.contains { $0.title == "Other project" })
+check("hide completed also hides history", TaskQuery(scope: .project(work.id), showCompleted: false, includesCompletedHistory: true).run(on: history, projects: [work], now: now, calendar: calendar).map(\.title) == ["Open"])
+let historySections = TaskSection.make(for: .project(work.id), tasks: withHistory, now: now, calendar: calendar)
+check("open first, then one section a day, newest first", historySections.map(\.isCompletedHistory) == [false, true, true], "\(historySections.map(\.title))")
+check("sections say what they are", historySections[1].title == "Completed · Today", "\(String(describing: historySections[1].title))")
+check("newest first inside a day", historySections[2].tasks.map(\.title) == ["Done earlier later", "Done earlier"])
+check("a project with nothing finished stays one section", TaskSection.make(for: .project(work.id), tasks: [history[0]], now: now, calendar: calendar).map(\.id) == ["all"])
+check("everything finished has no empty open section", TaskSection.make(for: .project(work.id), tasks: [history[1]], now: now, calendar: calendar).map(\.isCompletedHistory) == [true])
 
 print("Dashboard")
 let stats = DashboardStats(tasks: tasks, projects: [work], now: now, calendar: calendar)
@@ -202,6 +271,46 @@ do {
     check("persistence threw \(error)", false)
 }
 try? FileManager.default.removeItem(at: directory)
+
+print("Data folder")
+let dataFolder = FileManager.default.temporaryDirectory.appendingPathComponent("TodoCoreChecks-\(UUID().uuidString)")
+do {
+    let fm = FileManager.default
+    check("dated folder name", DatedFolder.name(for: date(2026, 3, 7, 23, 59), calendar: calendar) == "2026-03-07")
+    check("dated names", DatedFolder.isDatedName("2026-03-07") && !DatedFolder.isDatedName("notes") && !DatedFolder.isDatedName("2026-3-7") && !DatedFolder.isDatedName("ABCD-EF-GH"))
+
+    let dataStore = DataFileStore(directory: dataFolder)
+    let nothingYet = try dataStore.backUpDataFile(now: now, calendar: calendar)
+    check("nothing to back up yet", nothingYet == nil)
+    try dataStore.save(AppData(tasks: [TaskItem(title: "First")]))
+    let backup = try dataStore.backUpDataFile(now: now, calendar: calendar)
+    check("backup lands in a dated folder", backup?.path.hasSuffix("Backups/2026-10-23/tasks.json") == true, backup?.path ?? "nil")
+    try dataStore.save(AppData(tasks: [TaskItem(title: "Second")]))
+    let second = try dataStore.backUpDataFile(now: now, calendar: calendar)
+    check("only one backup a day", second == nil)
+    let kept = try DataFileStore(directory: backup!.deletingLastPathComponent()).load()
+    check("the day's backup keeps the morning's data", kept?.tasks.first?.title == "First")
+    let nextDay = try dataStore.backUpDataFile(now: date(2026, 10, 24, 9), calendar: calendar)
+    check("the next day gets its own", nextDay != nil)
+
+    let files = dataFolder.appendingPathComponent("Attachments")
+    func touch(_ path: String) throws {
+        let url = files.appendingPathComponent(path)
+        try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("x".utf8).write(to: url)
+    }
+    func present(_ path: String) -> Bool { fm.fileExists(atPath: files.appendingPathComponent(path).path) }
+    try touch("old-kept.pdf"); try touch("old-unused.pdf")
+    try touch("2026-10-23/kept.pdf"); try touch("2026-10-23/unused.pdf")
+    try touch("2026-10-22/unused.pdf"); try touch("2026-10-21/.hidden")
+    AttachmentFiles.removeUnreferenced(in: files, keeping: ["old-kept.pdf", "2026-10-23/kept.pdf"])
+    check("cleanup keeps files still in use, flat and dated", present("old-kept.pdf") && present("2026-10-23/kept.pdf"))
+    check("cleanup removes unused files, flat and dated", !present("old-unused.pdf") && !present("2026-10-23/unused.pdf"))
+    check("cleanup removes emptied folders only", !present("2026-10-22") && present("2026-10-23") && present("2026-10-21/.hidden"))
+} catch {
+    check("data folder threw \(error)", false)
+}
+try? FileManager.default.removeItem(at: dataFolder)
 
 print("")
 if failures == 0 {

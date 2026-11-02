@@ -7,15 +7,16 @@ import UniformTypeIdentifiers
 /// Small, downsampled previews of image attachments, decoded once per file.
 private let thumbnailCache = NSCache<NSString, NSImage>()
 
-/// Keeps copies of attached files inside the app's data folder, so attachments
-/// survive the original being moved or deleted.
+/// Keeps copies of attached files inside the app's data folder, one folder per day,
+/// so attachments survive the original being moved or deleted.
 struct AttachmentStorage {
     let directory: URL
 
     func importFile(at source: URL) throws -> Attachment {
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let folder = DatedFolder.name(for: Date())
+        try FileManager.default.createDirectory(at: directory.appendingPathComponent(folder), withIntermediateDirectories: true)
         let id = UUID()
-        let storedName = "\(id.uuidString)-\(source.lastPathComponent)"
+        let storedName = "\(folder)/\(id.uuidString)-\(source.lastPathComponent)"
         try FileManager.default.copyItem(at: source, to: directory.appendingPathComponent(storedName))
         return Attachment(id: id, kind: .file, name: source.lastPathComponent, location: storedName)
     }
@@ -63,10 +64,7 @@ struct AttachmentStorage {
     /// Deletes stored copies no task refers to any more. Runs at launch, which keeps
     /// undo of a deleted task or attachment safe for the whole session.
     func removeFiles(notIn referenced: Set<String>) {
-        guard let names = try? FileManager.default.contentsOfDirectory(atPath: directory.path) else { return }
-        for name in names where !referenced.contains(name) && !name.hasPrefix(".") {
-            try? FileManager.default.removeItem(at: directory.appendingPathComponent(name))
-        }
+        AttachmentFiles.removeUnreferenced(in: directory, keeping: referenced)
     }
 
     /// Accepts "example.com/page" as well as full URLs.

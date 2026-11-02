@@ -21,7 +21,7 @@ A native macOS task manager built with Swift and SwiftUI. Minimal and monochrome
 - **Tasks** — create, edit, complete, duplicate and delete, with full undo and redo.
 - **Due dates and times** — quick picks (Today, Tomorrow, Next week), a month calendar and an optional time. Overdue tasks turn red.
 - **Priorities** — High, Medium and Low. Only High uses colour.
-- **Projects** — each with its own name, icon and colour. Deleting a project moves its tasks to the Inbox.
+- **Projects** — each with its own name, icon and colour. Projects can hold sub-projects. Deleting a project moves its tasks and sub-projects up a level.
 - **Subtasks** — a checklist inside each task, with progress shown on the row.
 - **Recurring tasks** — daily, weekdays, weekly, monthly, yearly, or custom (every *n* days, weeks, months or years, on chosen weekdays). Completing one schedules the next; month-end dates stay on the month's last day.
 - **Reminders** — native macOS notifications, from "at time of due" to two days before. Clicking a notification opens the task.
@@ -75,7 +75,7 @@ cd ToDoApp
 | ⌃⌘3 / 2 / 1 / 0 | Priority High / Medium / Low / None |
 | ⌥⌘T / ⇧⌥⌘T | Due today / tomorrow |
 | ⌘1 / ⌘2 / ⌘3 | List / Board / Calendar |
-| ⌥⌘1 … ⌥⌘5 | Inbox, Today, Upcoming, Completed, Dashboard |
+| ⌥⌘1 … ⌥⌘5 | All Tasks, Today, Upcoming, Completed, Dashboard |
 | ⌃⌘S / ⌥⌘I | Show or hide the sidebar / task details |
 | ⌘Z / ⇧⌘Z | Undo / redo |
 

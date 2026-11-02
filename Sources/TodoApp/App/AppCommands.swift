@@ -14,6 +14,8 @@ struct AppCommands: Commands {
                 .keyboardShortcut("n", modifiers: .command)
             Button("New Project…") { state.projectEditor = ProjectEditorRequest(projectID: nil) }
                 .keyboardShortcut("n", modifiers: [.command, .shift])
+            Divider()
+            Button("Show Data Folder") { state.showDataFolder() }
         }
 
         CommandGroup(replacing: .textEditing) {
@@ -75,6 +77,7 @@ struct AppCommands: Commands {
             ForEach(Array(ViewMode.allCases.enumerated()), id: \.element) { index, mode in
                 Button("as \(mode.title)") { state.viewMode = mode }
                     .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .command)
+                    .disabled(!state.shows(mode.element))
             }
             Divider()
             Button(state.isSidebarVisible ? "Hide Sidebar" : "Show Sidebar") {
@@ -91,19 +94,22 @@ struct AppCommands: Commands {
                     Text(option.title).tag(option)
                 }
             }
+            Button("Customize…") { state.openSettings() }
             Divider()
         }
 
         CommandMenu("Go") {
-            goButton("Inbox", .inbox, key: "1")
+            goButton("All Tasks", .allTasks, key: "1")
             goButton("Today", .today, key: "2")
             goButton("Upcoming", .upcoming, key: "3")
             goButton("Completed", .completed, key: "4")
             goButton("Dashboard", .dashboard, key: "5")
-            if !store.projects.isEmpty {
+            if !store.projects.isEmpty, state.shows(.projects) {
                 Divider()
-                ForEach(store.projects) { project in
-                    Button(project.name) { state.select(.project(project.id)) }
+                ForEach(store.projects.outline()) { row in
+                    Button(String(repeating: "    ", count: row.depth) + row.project.name) {
+                        state.select(.project(row.id))
+                    }
                 }
             }
         }
@@ -112,6 +118,7 @@ struct AppCommands: Commands {
     private func goButton(_ title: String, _ item: SidebarItem, key: Character) -> some View {
         Button(title) { state.select(item) }
             .keyboardShortcut(KeyEquivalent(key), modifiers: [.command, .option])
+            .disabled(!state.shows(item.element))
     }
 
     private func setDue(offset: Int) {

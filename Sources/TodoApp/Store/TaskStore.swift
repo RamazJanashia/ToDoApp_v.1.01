@@ -22,6 +22,8 @@ final class TaskStore: ObservableObject {
     let attachments: AttachmentStorage
 
     private let fileStore: DataFileStore
+    /// The one folder that holds everything: tasks, backups and attachments.
+    var dataDirectory: URL { fileStore.directory }
     /// False when an unreadable data file couldn't be moved aside: saving would overwrite it.
     private var canSave = true
     private var pendingSave: DispatchWorkItem?
@@ -189,8 +191,8 @@ final class TaskStore: ObservableObject {
     // MARK: - Projects
 
     @discardableResult
-    func createProject(name: String, icon: String, color: ProjectColor) -> Project {
-        let project = Project(name: name, icon: icon, color: color)
+    func createProject(name: String, icon: String, color: ProjectColor, parentID: UUID? = nil) -> Project {
+        let project = Project(name: name, icon: icon, color: color, parentID: parentID)
         undoable("New Project") {
             projects.append(project)
         }
@@ -205,24 +207,17 @@ final class TaskStore: ObservableObject {
         undoable("Edit Project") { projects[index] = project }
     }
 
-    /// Deletes the project; its tasks move to the Inbox rather than disappearing.
+    /// Deletes the project; what's under it moves up rather than disappearing.
     func deleteProject(_ id: UUID) {
         undoable("Delete Project") {
-            projects.removeAll { $0.id == id }
-            for index in tasks.indices where tasks[index].projectID == id {
-                tasks[index].projectID = nil
-            }
+            TaskOperations.deleteProject(id, projects: &projects, tasks: &tasks)
         }
     }
 
     func moveProject(_ id: UUID, before targetID: UUID) {
-        guard id != targetID,
-              let from = projects.firstIndex(where: { $0.id == id }) else { return }
-        undoable("Move Project") {
-            let project = projects.remove(at: from)
-            let to = projects.firstIndex(where: { $0.id == targetID }) ?? projects.endIndex
-            projects.insert(project, at: to)
-        }
+        var reordered = projects
+        guard reordered.moveProject(id, before: targetID) else { return }
+        undoable("Move Project") { projects = reordered }
     }
 
     // MARK: - Undo
@@ -284,6 +279,11 @@ final class TaskStore: ObservableObject {
             tasks = saved.tasks
             projects = saved.projects
             reminders.sync(tasks: tasks, projects: projects)
+            do {
+                try fileStore.backUpDataFile()
+            } catch {
+                logger.error("Couldn't back up tasks: \(error.localizedDescription, privacy: .public)")
+            }
         } else {
             let sample = AppData.sample()
             tasks = sample.tasks

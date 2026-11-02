@@ -7,6 +7,7 @@ struct SubtasksSection: View {
 
     let taskID: UUID
     let subtasks: [Subtask]
+    let progress: Double
 
     @State private var newTitle = ""
     @FocusState private var addFieldFocused: Bool
@@ -26,22 +27,28 @@ struct SubtasksSection: View {
             .padding(.top, 30)
             .padding(.bottom, 8)
 
+            if !subtasks.isEmpty {
+                ProgressLine(fraction: progress)
+                    .padding(.bottom, 8)
+            }
+
             ForEach(subtasks) { subtask in
                 SubtaskRow(taskID: taskID, subtask: subtask)
             }
 
-            HStack(spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
                 Image(systemName: "plus")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(Theme.tertiaryText)
-                    .frame(width: 20)
-                TextField("Add subtask", text: $newTitle)
+                    .frame(width: 20, height: 17)
+                TextField("Add subtask", text: $newTitle, axis: .vertical)
                     .textFieldStyle(.plain)
                     .font(Theme.Font.body)
+                    .lineLimit(1...)
                     .focused($addFieldFocused)
                     .onSubmit(add)
             }
-            .frame(height: 34)
+            .padding(.vertical, 8)
         }
     }
 
@@ -76,7 +83,7 @@ struct SubtaskRow: View {
     }
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(alignment: .top, spacing: 12) {
             CheckSquare(isDone: subtask.isDone) {
                 store.updateTask(taskID, undoName: "Toggle Subtask") { task in
                     if let index = task.subtasks.firstIndex(where: { $0.id == subtask.id }) {
@@ -84,12 +91,13 @@ struct SubtaskRow: View {
                     }
                 }
             }
-            TextField("Subtask", text: titleBinding)
+            TextField("Subtask", text: titleBinding, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(Theme.Font.body)
                 .foregroundColor(subtask.isDone ? Theme.tertiaryText : Theme.primaryText)
                 .strikethrough(subtask.isDone, color: Theme.tertiaryText)
-            Spacer(minLength: 0)
+                .lineLimit(1...)
+                .frame(maxWidth: .infinity, alignment: .leading)
             Button {
                 store.updateTask(taskID, undoName: "Delete Subtask") { task in
                     task.subtasks.removeAll { $0.id == subtask.id }
@@ -105,7 +113,7 @@ struct SubtaskRow: View {
             .opacity(hovering ? 1 : 0)
             .help("Delete Subtask")
         }
-        .frame(height: 34)
+        .padding(.vertical, 8)
         .onHover { hovering = $0 }
     }
 }

@@ -11,7 +11,7 @@ struct CenterView: View {
         } else {
             let tasks = state.visibleTasks
             VStack(alignment: .leading, spacing: 0) {
-                CenterHeader(tasks: tasks, maxWidth: state.viewMode == .list ? Theme.Layout.readingWidth : .infinity)
+                CenterHeader(tasks: state.currentTasks, maxWidth: state.viewMode == .list ? Theme.Layout.readingWidth : .infinity)
                 switch state.viewMode {
                 case .list:
                     TaskListView(tasks: tasks)
@@ -53,7 +53,7 @@ struct CenterHeader: View {
     }
 
     private var showsProgress: Bool {
-        guard !state.isSearching, !tasks.isEmpty, state.viewMode != .calendar else { return false }
+        guard state.shows(.headerProgress), !state.isSearching, !tasks.isEmpty, state.viewMode != .calendar else { return false }
         switch state.sidebarSelection {
         case .upcoming, .completed: return false
         default: return true
@@ -80,7 +80,7 @@ struct CenterHeader: View {
                 .foregroundColor(Theme.secondaryText)
                 .lineLimit(1)
                 .padding(.top, 10)
-            ProgressLine(fraction: tasks.isEmpty ? 0 : Double(doneCount) / Double(tasks.count))
+            ProgressLine(fraction: TaskItem.progress(of: tasks))
                 .padding(.top, 16)
                 .opacity(showsProgress ? 1 : 0)
                 .frame(height: showsProgress ? nil : 0)
@@ -100,13 +100,15 @@ struct ViewModeSwitcher: View {
     var body: some View {
         HStack(spacing: 2) {
             ForEach(Array(ViewMode.allCases.enumerated()), id: \.element) { index, mode in
-                IconButton(
-                    systemName: mode.icon,
-                    size: 13,
-                    isActive: state.viewMode == mode,
-                    help: "\(mode.title) (⌘\(index + 1))"
-                ) {
-                    withAnimation(Theme.Motion.quick) { state.viewMode = mode }
+                if state.shows(mode.element) {
+                    IconButton(
+                        systemName: mode.icon,
+                        size: 13,
+                        isActive: state.viewMode == mode,
+                        help: "\(mode.title) (⌘\(index + 1))"
+                    ) {
+                        withAnimation(Theme.Motion.quick) { state.viewMode = mode }
+                    }
                 }
             }
         }

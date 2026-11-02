@@ -39,6 +39,16 @@ public enum TaskOperations {
         tasks.append(contentsOf: spawned)
     }
 
+    /// Removes a project without losing anything under it: its sub-projects and tasks move up to
+    /// its parent, or to the top level and "no project" when it has none.
+    public static func deleteProject(_ id: UUID, projects: inout [Project], tasks: inout [TaskItem]) {
+        let declared = projects.first { $0.id == id }?.parentID
+        let parent = projects.contains { $0.id == declared && $0.id != id } ? declared : nil
+        projects.removeAll { $0.id == id }
+        for index in projects.indices where projects[index].parentID == id { projects[index].parentID = parent }
+        for index in tasks.indices where tasks[index].projectID == id { tasks[index].projectID = parent }
+    }
+
     /// The sort order that puts a task directly in front of `targetID` in `ordered`
     /// (the list as displayed), or `nil` when the move makes no sense.
     public static func sortOrder(placing id: UUID, before targetID: UUID, in ordered: [TaskItem]) -> Double? {

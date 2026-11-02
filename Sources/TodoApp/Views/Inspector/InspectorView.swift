@@ -76,100 +76,114 @@ struct TaskDetailForm: View {
                         .textFieldStyle(.plain)
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundColor(task.isCompleted ? Theme.secondaryText : Theme.primaryText)
-                        .lineLimit(1...5)
+                        .lineLimit(1...)
                         .focused($titleFocused)
                 }
                 .padding(.top, 10)
                 .padding(.bottom, 22)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    PropertyRow(
-                        icon: "calendar",
-                        iconColor: task.isOverdue() ? Theme.red : Theme.secondaryText,
-                        title: task.dueDate.map { DueDateText.label(for: $0, hasTime: task.hasDueTime) } ?? "Add due date",
-                        isPlaceholder: task.dueDate == nil,
-                        isPresented: $showDue
-                    ) {
-                        DueDatePopover(taskID: taskID)
+                    if state.shows(.detailDueDate) {
+                        PropertyRow(
+                            icon: "calendar",
+                            iconColor: task.isOverdue() ? Theme.red : Theme.secondaryText,
+                            title: task.dueDate.map { DueDateText.label(for: $0, hasTime: task.hasDueTime) } ?? "Add due date",
+                            isPlaceholder: task.dueDate == nil,
+                            isPresented: $showDue
+                        ) {
+                            DueDatePopover(taskID: taskID)
+                        }
                     }
 
-                    PropertyRow(
-                        icon: task.reminderOffset == nil ? "bell" : "bell.fill",
-                        title: reminderTitle(task),
-                        isPlaceholder: task.reminderOffset == nil || task.dueDate == nil,
-                        isPresented: $showReminder
-                    ) {
-                        ReminderPopover(taskID: taskID) { showReminder = false }
+                    if state.shows(.detailReminder) {
+                        PropertyRow(
+                            icon: task.reminderOffset == nil ? "bell" : "bell.fill",
+                            title: reminderTitle(task),
+                            isPlaceholder: task.reminderOffset == nil || task.dueDate == nil,
+                            isPresented: $showReminder
+                        ) {
+                            ReminderPopover(taskID: taskID) { showReminder = false }
+                        }
                     }
 
-                    PropertyRow(
-                        icon: "flag",
-                        iconColor: task.priority == .none ? Theme.secondaryText : task.priority.tint,
-                        title: task.priority == .none ? "Add priority" : task.priority.title,
-                        isPlaceholder: task.priority == .none,
-                        isPresented: $showPriority
-                    ) {
-                        PopoverSurface(width: 200) {
-                            ForEach(Priority.descending) { priority in
-                                OptionRow(
-                                    icon: "flag",
-                                    iconColor: priority.tint,
-                                    title: priority.title,
-                                    isSelected: task.priority == priority,
-                                    shortcut: "⌃⌘\(priority.rawValue)"
-                                ) {
-                                    store.updateTask(taskID, undoName: "Set Priority") { $0.priority = priority }
-                                    showPriority = false
+                    if state.shows(.detailPriority) {
+                        PropertyRow(
+                            icon: "flag",
+                            iconColor: task.priority == .none ? Theme.secondaryText : task.priority.tint,
+                            title: task.priority == .none ? "Add priority" : task.priority.title,
+                            isPlaceholder: task.priority == .none,
+                            isPresented: $showPriority
+                        ) {
+                            PopoverSurface(width: 200) {
+                                ForEach(Priority.descending) { priority in
+                                    OptionRow(
+                                        icon: "flag",
+                                        iconColor: priority.tint,
+                                        title: priority.title,
+                                        isSelected: task.priority == priority,
+                                        shortcut: "⌃⌘\(priority.rawValue)"
+                                    ) {
+                                        store.updateTask(taskID, undoName: "Set Priority") { $0.priority = priority }
+                                        showPriority = false
+                                    }
                                 }
                             }
                         }
                     }
 
-                    PropertyRow(
-                        icon: project?.icon ?? "tray",
-                        iconColor: project?.color.color ?? Theme.secondaryText,
-                        title: project?.name ?? "Inbox",
-                        isPresented: $showProject
-                    ) {
-                        PopoverSurface(width: 220) {
-                            OptionRow(icon: "tray", title: "Inbox", isSelected: task.projectID == nil) {
-                                store.updateTask(taskID, undoName: "Move to Project") { $0.projectID = nil }
-                                showProject = false
-                            }
-                            ForEach(store.projects) { option in
-                                OptionRow(icon: option.icon, iconColor: option.color.color, title: option.name, isSelected: task.projectID == option.id) {
-                                    store.updateTask(taskID, undoName: "Move to Project") { $0.projectID = option.id }
+                    if state.shows(.detailProject) {
+                        PropertyRow(
+                            icon: project?.icon ?? "tray",
+                            iconColor: project?.color.color ?? Theme.secondaryText,
+                            title: project?.name ?? "No Project",
+                            isPresented: $showProject
+                        ) {
+                            PopoverSurface(width: 220) {
+                                OptionRow(icon: "tray", title: "No Project", isSelected: task.projectID == nil) {
+                                    store.updateTask(taskID, undoName: "Move to Project") { $0.projectID = nil }
                                     showProject = false
                                 }
-                            }
-                            Hairline().padding(.vertical, 4)
-                            OptionRow(icon: "plus", title: "New Project…") {
-                                showProject = false
-                                state.projectEditor = ProjectEditorRequest(projectID: nil)
+                                ForEach(store.projects.outline()) { row in
+                                    let option = row.project
+                                    OptionRow(icon: option.icon, iconColor: option.color.color, title: option.name, isSelected: task.projectID == option.id) {
+                                        store.updateTask(taskID, undoName: "Move to Project") { $0.projectID = option.id }
+                                        showProject = false
+                                    }
+                                    .padding(.leading, CGFloat(row.depth) * 14)
+                                }
+                                Hairline().padding(.vertical, 4)
+                                OptionRow(icon: "plus", title: "New Project…") {
+                                    showProject = false
+                                    state.projectEditor = ProjectEditorRequest(projectID: nil)
+                                }
                             }
                         }
                     }
 
-                    PropertyRow(
-                        icon: "repeat",
-                        title: task.recurrence?.summary ?? "Doesn’t repeat",
-                        isPlaceholder: task.recurrence == nil,
-                        isPresented: $showRepeat
-                    ) {
-                        RepeatPopover(taskID: taskID)
+                    if state.shows(.detailRepeat) {
+                        PropertyRow(
+                            icon: "repeat",
+                            title: task.recurrence?.summary ?? "Doesn’t repeat",
+                            isPlaceholder: task.recurrence == nil,
+                            isPresented: $showRepeat
+                        ) {
+                            RepeatPopover(taskID: taskID)
+                        }
                     }
 
-                    PropertyRow(
-                        icon: task.status.icon,
-                        iconColor: task.status == .done ? Theme.green : Theme.secondaryText,
-                        title: task.status.title,
-                        isPresented: $showStatus
-                    ) {
-                        PopoverSurface(width: 200) {
-                            ForEach(TaskStatus.allCases) { status in
-                                OptionRow(icon: status.icon, title: status.title, isSelected: task.status == status) {
-                                    store.setStatus([taskID], to: status)
-                                    showStatus = false
+                    if state.shows(.detailStatus) {
+                        PropertyRow(
+                            icon: task.status.icon,
+                            iconColor: task.status == .done ? Theme.green : Theme.secondaryText,
+                            title: task.status.title,
+                            isPresented: $showStatus
+                        ) {
+                            PopoverSurface(width: 200) {
+                                ForEach(TaskStatus.allCases) { status in
+                                    OptionRow(icon: status.icon, title: status.title, isSelected: task.status == status) {
+                                        store.setStatus([taskID], to: status)
+                                        showStatus = false
+                                    }
                                 }
                             }
                         }
@@ -177,18 +191,24 @@ struct TaskDetailForm: View {
                 }
                 .padding(.horizontal, -8)
 
-                SectionHeader("Notes")
-                    .padding(.top, 30)
-                    .padding(.bottom, 10)
-                TextField("Add notes", text: binding(\.notes), axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .font(Theme.Font.body)
-                    .foregroundColor(Theme.primaryText.opacity(0.85))
-                    .lineSpacing(3)
-                    .lineLimit(2...)
+                if state.shows(.detailNotes) {
+                    SectionHeader("Notes")
+                        .padding(.top, 30)
+                        .padding(.bottom, 10)
+                    TextField("Add notes", text: binding(\.notes), axis: .vertical)
+                        .textFieldStyle(.plain)
+                        .font(Theme.Font.body)
+                        .foregroundColor(Theme.primaryText.opacity(0.85))
+                        .lineSpacing(3)
+                        .lineLimit(2...)
+                }
 
-                SubtasksSection(taskID: taskID, subtasks: task.subtasks)
-                AttachmentsSection(taskID: taskID, attachments: task.attachments)
+                if state.shows(.detailSubtasks) {
+                    SubtasksSection(taskID: taskID, subtasks: task.subtasks, progress: task.progress)
+                }
+                if state.shows(.detailAttachments) {
+                    AttachmentsSection(taskID: taskID, attachments: task.attachments)
+                }
 
                 Hairline()
                     .padding(.top, 30)

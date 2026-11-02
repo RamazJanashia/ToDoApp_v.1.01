@@ -2,12 +2,17 @@ import Foundation
 
 /// Which slice of the workspace a list shows.
 public enum TaskScope: Hashable, Sendable {
-    case inbox
+    /// Open tasks from everywhere, plus what was finished today.
+    case allOpen
     case today
     case upcoming
     case completed
     case all
-    case project(UUID)
+    /// A project together with its sub-projects.
+    case projects(Set<UUID>)
+
+    /// One project on its own.
+    public static func project(_ id: UUID) -> TaskScope { .projects([id]) }
 }
 
 public enum TaskSort: String, CaseIterable, Identifiable, Codable, Sendable {
@@ -38,19 +43,23 @@ public struct TaskQuery: Hashable, Sendable {
     /// Whether tasks finished today stay visible (struck through) in active lists.
     public var showCompleted: Bool
     public var sort: TaskSort
+    /// In a project scope, also bring in tasks finished on earlier days.
+    public var includesCompletedHistory: Bool
 
     public init(
         scope: TaskScope,
         searchText: String = "",
         priorities: Set<Priority> = [],
         showCompleted: Bool = true,
-        sort: TaskSort = .manual
+        sort: TaskSort = .manual,
+        includesCompletedHistory: Bool = false
     ) {
         self.scope = scope
         self.searchText = searchText
         self.priorities = priorities
         self.showCompleted = showCompleted
         self.sort = sort
+        self.includesCompletedHistory = includesCompletedHistory
     }
 
     public func run(on tasks: [TaskItem], projects: [Project], now: Date = Date(), calendar: Calendar = .current) -> [TaskItem] {
@@ -60,7 +69,7 @@ public struct TaskQuery: Hashable, Sendable {
             .map(String.init)
 
         let matching = tasks.filter { task in
-            guard Self.belongs(task, to: scope, now: now, calendar: calendar) else { return false }
+            guard Self.belongs(task, to: scope, now: now, calendar: calendar) || isCompletedHistory(task) else { return false }
             if task.isCompleted && !showCompleted && scope != .completed { return false }
             if !priorities.isEmpty && !priorities.contains(task.priority) { return false }
             if !tokens.isEmpty {
@@ -79,6 +88,11 @@ public struct TaskQuery: Hashable, Sendable {
         }
     }
 
+    private func isCompletedHistory(_ task: TaskItem) -> Bool {
+        guard includesCompletedHistory, task.isCompleted, case .projects(let ids) = scope, let projectID = task.projectID else { return false }
+        return ids.contains(projectID)
+    }
+
     /// Incomplete tasks in a scope, for sidebar counters.
     public static func openCount(in scope: TaskScope, tasks: [TaskItem], now: Date = Date(), calendar: Calendar = .current) -> Int {
         tasks.reduce(0) { count, task in
@@ -92,8 +106,8 @@ public struct TaskQuery: Hashable, Sendable {
         let finishedToday = task.completedAt.map { calendar.isDate($0, inSameDayAs: now) } ?? false
 
         switch scope {
-        case .inbox:
-            return task.projectID == nil && (!task.isCompleted || finishedToday)
+        case .allOpen:
+            return !task.isCompleted || finishedToday
         case .today:
             guard let due = task.dueDate, due < startOfTomorrow else { return false }
             return !task.isCompleted || finishedToday
@@ -104,8 +118,9 @@ public struct TaskQuery: Hashable, Sendable {
             return task.isCompleted
         case .all:
             return true
-        case .project(let id):
-            return task.projectID == id && (!task.isCompleted || finishedToday)
+        case .projects(let ids):
+            guard let projectID = task.projectID, ids.contains(projectID) else { return false }
+            return !task.isCompleted || finishedToday
         }
     }
 
@@ -155,12 +170,15 @@ public struct TaskSection: Identifiable, Hashable, Sendable {
     public var detail: String?
     public var isWarning: Bool
     public var tasks: [TaskItem]
+    /// One day's finished tasks below a project's open ones.
+    public var isCompletedHistory: Bool
 
-    public init(id: String, title: String? = nil, detail: String? = nil, isWarning: Bool = false, tasks: [TaskItem]) {
+    public init(id: String, title: String? = nil, detail: String? = nil, isWarning: Bool = false, isCompletedHistory: Bool = false, tasks: [TaskItem]) {
         self.id = id
         self.title = title
         self.detail = detail
         self.isWarning = isWarning
+        self.isCompletedHistory = isCompletedHistory
         self.tasks = tasks
     }
 
@@ -183,6 +201,23 @@ public struct TaskSection: Identifiable, Hashable, Sendable {
 
         case .completed:
             return grouped(tasks, by: { $0.completedAt }, ascending: false, now: now, calendar: calendar)
+
+        case .projects:
+            let open = tasks.filter { !$0.isCompleted }
+            let finished = tasks
+                .filter(\.isCompleted)
+                .sorted { ($0.completedAt ?? .distantPast) > ($1.completedAt ?? .distantPast) }
+            guard !finished.isEmpty else { return [TaskSection(id: "all", tasks: tasks)] }
+            let history = grouped(finished, by: { $0.completedAt }, ascending: false, now: now, calendar: calendar).map { day in
+                TaskSection(
+                    id: "completed-\(day.id)",
+                    title: "Completed · \(day.title ?? "")",
+                    detail: day.detail,
+                    isCompletedHistory: true,
+                    tasks: day.tasks
+                )
+            }
+            return (open.isEmpty ? [] : [TaskSection(id: "all", tasks: open)]) + history
 
         default:
             return [TaskSection(id: "all", tasks: tasks)]

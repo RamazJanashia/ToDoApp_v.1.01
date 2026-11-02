@@ -61,15 +61,12 @@ struct RootView: View {
             )
         ) {
             Button("Delete Project", role: .destructive) {
-                if let project = state.projectPendingDeletion {
-                    if state.sidebarSelection == .project(project.id) { state.select(.inbox) }
-                    store.deleteProject(project.id)
-                }
+                if let project = state.projectPendingDeletion { state.deleteProject(project) }
                 state.projectPendingDeletion = nil
             }
             Button("Cancel", role: .cancel) { state.projectPendingDeletion = nil }
         } message: {
-            Text("Its tasks will move to the Inbox. You can undo this with ⌘Z.")
+            Text(deletionMessage)
         }
         .alert(
             "Couldn’t open your tasks",
@@ -81,6 +78,14 @@ struct RootView: View {
         }
         .onAppear { store.undoManager = undoManager }
         .onChange(of: undoManager) { store.undoManager = $0 }
+    }
+
+    private var deletionMessage: String {
+        let parent = store.project(with: state.projectPendingDeletion?.parentID)
+        let home = parent.map { "“\($0.name)”" }
+        let what = home.map { "Its tasks and sub-projects will move to \($0)." }
+            ?? "Its tasks will stay in All Tasks without a project, and its sub-projects will move to the top level."
+        return "\(what) You can undo this with ⌘Z."
     }
 
     private static let centerMinWidth: Double = 500
@@ -111,19 +116,23 @@ struct RootView: View {
                 .lineLimit(1)
         }
         ToolbarItemGroup(placement: .automatic) {
-            ToolbarSearchField()
-            Menu {
-                Picker("Appearance", selection: $state.appearance) {
-                    ForEach(AppearancePreference.allCases) { option in
-                        Label(option.title, systemImage: option.icon).tag(option)
-                    }
-                }
-                .pickerStyle(.inline)
-            } label: {
-                Image(systemName: state.appearance.icon)
+            if state.shows(.toolbarSearch) {
+                ToolbarSearchField()
             }
-            .menuIndicator(.hidden)
-            .help("Appearance")
+            if state.shows(.toolbarAppearance) {
+                Menu {
+                    Picker("Appearance", selection: $state.appearance) {
+                        ForEach(AppearancePreference.allCases) { option in
+                            Label(option.title, systemImage: option.icon).tag(option)
+                        }
+                    }
+                    .pickerStyle(.inline)
+                } label: {
+                    Image(systemName: state.appearance.icon)
+                }
+                .menuIndicator(.hidden)
+                .help("Appearance")
+            }
             IconButton(
                 systemName: "sidebar.right",
                 size: 15,
