@@ -45,6 +45,8 @@ public sealed partial class ReminderFlyout : OptionList
                 () =>
                 {
                     store.UpdateTask(id, "Set Reminder", t => t with { ReminderOffset = offset });
+                    // Says so when Windows won't show it.
+                    store.ConfirmRemindersAllowed();
                     dismiss();
                 },
                 isSelected: task.ReminderOffset == offset));

@@ -15,6 +15,34 @@ public class SectionTests
         new() { Title = "Next week", Notes = "quarterly numbers", DueDate = D(2026, 10, 30), SortOrder = 7 },
     };
 
+    private static readonly List<TaskItem> History = new()
+    {
+        new() { Title = "Open", ProjectId = Work.Id, SortOrder = 1 },
+        new() { Title = "Done today", Status = TodoCore.TaskStatus.Done, ProjectId = Work.Id, SortOrder = 2, CompletedAt = Now },
+        new() { Title = "Done earlier", Status = TodoCore.TaskStatus.Done, ProjectId = Work.Id, SortOrder = 3, CompletedAt = D(2026, 10, 15, 9) },
+        new() { Title = "Done earlier later", Status = TodoCore.TaskStatus.Done, ProjectId = Work.Id, SortOrder = 4, CompletedAt = D(2026, 10, 15, 18) },
+    };
+
+    [Fact]
+    public void Sections_ProjectOpenThenOneSectionPerDay()
+    {
+        var scope = TaskScope.Project(Work.Id);
+        var tasks = new TaskQuery(scope, IncludesCompletedHistory: true).Run(History, new[] { Work }, Now, Berlin);
+        var sections = TaskSection.Make(scope, tasks, Now, Berlin);
+
+        Assert.Equal(new[] { false, true, true }, sections.Select(s => s.IsCompletedHistory));
+        Assert.Equal("Completed · Today", sections[1].Title);
+        Assert.Equal(new[] { "Done earlier later", "Done earlier" }, sections[2].Tasks.Select(t => t.Title));
+    }
+
+    [Fact]
+    public void Sections_ProjectNothingFinished_IsOneSection() =>
+        Assert.Equal(new[] { "all" }, TaskSection.Make(TaskScope.Project(Work.Id), new[] { History[0] }, Now, Berlin).Select(s => s.Id));
+
+    [Fact]
+    public void Sections_ProjectAllFinished_HasNoEmptyOpenSection() =>
+        Assert.Equal(new[] { true }, TaskSection.Make(TaskScope.Project(Work.Id), new[] { History[1] }, Now, Berlin).Select(s => s.IsCompletedHistory));
+
     [Fact]
     public void Today_SplitsOverdue()
     {

@@ -61,9 +61,7 @@
               Style="{StaticResource AppTextBase}"
               FontSize="13.5"
               Foreground="{ThemeResource PrimaryTextBrush}"
-              TextWrapping="Wrap"
-              MaxLines="3"
-              TextTrimming="CharacterEllipsis" />
+              TextWrapping="Wrap" />
           <!-- The flag, or the ⓘ while the pointer is over the card. -->
           <Grid Grid.Column="2" Width="20" Height="18" VerticalAlignment="Top">
             <local:PriorityFlag
@@ -91,6 +89,13 @@
             Margin="26,0,0,0"
             TextBrush="{ThemeResource SecondaryTextBrush}"
             OverdueBrush="{ThemeResource RedBrush}" />
+        <!-- How far the subtasks have come; only for a task with subtasks. -->
+        <local:ProgressLine
+            x:Name="SubtaskProgress"
+            Margin="26,0,0,0"
+            Visibility="Collapsed"
+            TrackBrush="{ThemeResource TrackBrush}"
+            FillBrush="{ThemeResource GreenBrush}" />
       </StackPanel>
     </Border>
 

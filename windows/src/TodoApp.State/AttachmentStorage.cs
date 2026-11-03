@@ -4,7 +4,7 @@ using TodoCore;
 namespace TodoApp.State;
 
 /// <summary>
-/// Keeps copies of attached files inside the app's data folder, so attachments survive the original being moved
+/// Keeps copies of attached files inside the app's data folder, one folder per day, so attachments survive the original being moved
 /// or deleted.
 /// </summary>
 public sealed class AttachmentStorage
@@ -26,19 +26,22 @@ public sealed class AttachmentStorage
     public string Directory { get; }
 
     /// <summary>
-    /// Copies <paramref name="sourcePath"/> in as "{GUID}-{name}". The stored name is shortened, keeping the
-    /// extension, so the full path stays within 240 characters; the attachment's display name is unchanged.
+    /// Copies <paramref name="sourcePath"/> in as "{day}/{GUID}-{name}", the day's folder named as the Mac names it
+    /// and written with "/" as the Mac writes it. The stored name is shortened, keeping the extension, so the full
+    /// path stays within 240 characters; the attachment's display name is unchanged. Safe off the UI thread.
     /// </summary>
-    public Attachment ImportFile(string sourcePath, DateTime now)
+    public Attachment ImportFile(string sourcePath, DateTime now, TodoCalendar calendar)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
-        System.IO.Directory.CreateDirectory(Directory);
+        var day = DatedFolder.Name(now, calendar);
+        var folder = Path.Combine(Directory, day);
+        System.IO.Directory.CreateDirectory(folder);
         var id = Guid.NewGuid();
         var name = Path.GetFileName(sourcePath);
         var prefix = id.ToString("D").ToUpperInvariant() + "-";
-        var storedName = prefix + Shortened(name, MaxPathLength - (Directory.Length + 1) - prefix.Length);
-        File.Copy(sourcePath, Path.Combine(Directory, storedName));
-        return new Attachment { Id = id, Kind = AttachmentKind.File, Name = name, Location = storedName, AddedAt = now };
+        var storedName = prefix + Shortened(name, MaxPathLength - (folder.Length + 1) - prefix.Length);
+        File.Copy(sourcePath, Path.Combine(folder, storedName));
+        return new Attachment { Id = id, Kind = AttachmentKind.File, Name = name, Location = day + "/" + storedName, AddedAt = now };
     }
 
     /// <summary>Cuts the name to at most <paramref name="budget"/> characters, keeping the extension.</summary>
@@ -53,11 +56,26 @@ public sealed class AttachmentStorage
         return stem + extension;
     }
 
-    /// <summary>A file's full path inside the attachments folder; null for links.</summary>
+    /// <summary>
+    /// A file's full path inside the attachments folder; null for links, and for a location that points outside the
+    /// folder (the data file can be edited by hand).
+    /// </summary>
     public string? PathFor(Attachment attachment)
     {
         ArgumentNullException.ThrowIfNull(attachment);
-        return attachment.Kind == AttachmentKind.File ? Path.Combine(Directory, attachment.Location) : null;
+        return attachment.Kind == AttachmentKind.File ? AttachmentFiles.PathForLocation(attachment.Location, Directory) : null;
+    }
+
+    /// <summary>
+    /// What opening the attachment hands to Windows: a stored file's path inside the attachments folder, or a web or
+    /// mail address. Null for anything else, such as a link to a local program in a hand-edited data file.
+    /// </summary>
+    public string? OpenTarget(Attachment attachment)
+    {
+        ArgumentNullException.ThrowIfNull(attachment);
+        return attachment.Kind == AttachmentKind.File
+            ? PathFor(attachment)
+            : AttachmentLink.CanOpen(attachment.Location) ? attachment.Location : null;
     }
 
     public bool IsImage(Attachment attachment)
@@ -67,51 +85,11 @@ public sealed class AttachmentStorage
     }
 
     /// <summary>
-    /// Deletes stored copies no task refers to any more. Runs at launch, which keeps undo of a deleted task or
-    /// attachment safe for the whole session.
+    /// Deletes stored copies nothing refers to any more, apart from those in dated folders named
+    /// <paramref name="keepingFoldersFrom"/> or later.
     /// </summary>
-    public void RemoveFiles(IReadOnlySet<string> referencedLocations)
-    {
-        ArgumentNullException.ThrowIfNull(referencedLocations);
-        string[] entries;
-        try
-        {
-            entries = System.IO.Directory.GetFileSystemEntries(Directory);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            return;
-        }
-
-        foreach (var entry in entries)
-        {
-            var name = Path.GetFileName(entry);
-            if (referencedLocations.Contains(name) || name.StartsWith('.')) continue;
-            try
-            {
-                if (System.IO.Directory.Exists(entry)) System.IO.Directory.Delete(entry, recursive: true);
-                else File.Delete(entry);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                AppLog.Error($"Couldn't remove unused attachment {name}", ex);
-            }
-        }
-    }
-
-    /// <summary>Accepts "example.com/page" as well as full URLs.</summary>
-    public static Attachment? Link(string text, DateTime now)
-    {
-        ArgumentNullException.ThrowIfNull(text);
-        var trimmed = text.Trim();
-        if (trimmed.Length == 0 || trimmed.Any(char.IsWhiteSpace)) return null;
-        var candidate = trimmed.Contains("://", StringComparison.Ordinal) ? trimmed : "https://" + trimmed;
-        if (!Uri.TryCreate(candidate, UriKind.Absolute, out var uri)) return null;
-        var host = uri.Host;
-        if (!host.Contains('.') && host != "localhost") return null;
-        var name = host.StartsWith("www.", StringComparison.OrdinalIgnoreCase) ? host[4..] : host;
-        return new Attachment { Kind = AttachmentKind.Link, Name = name, Location = candidate, AddedAt = now };
-    }
+    public void RemoveFiles(IReadOnlySet<string> referencedLocations, string keepingFoldersFrom) =>
+        AttachmentFiles.RemoveUnreferenced(Directory, referencedLocations, keepingFoldersFrom);
 
     /// <summary>
     /// Like Foundation's ByteCountFormatter with the .file style: decimal units, whole bytes and kilobytes,

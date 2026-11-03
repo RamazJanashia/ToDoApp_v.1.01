@@ -10,13 +10,25 @@ public static class ColumnLayout
     public static readonly (double Min, double Max) InspectorRange = (290, 480);
 
     /// <summary>
-    /// On small windows the side columns give way (down to their minimums) so the task list keeps room to
-    /// breathe; on larger windows they use the widths the user dragged them to.
+    /// The columns use the widths the user dragged them to. When that would leave the task list too little room,
+    /// they give way down to their minimums, the inspector first. A hidden column takes no room.
     /// </summary>
-    public static (double Sidebar, double Inspector) Widths(double total, double sidebarPreferred, double inspectorPreferred)
+    public static (double Sidebar, double Inspector) Widths(
+        double total, double sidebarPreferred, double inspectorPreferred, bool sidebarVisible, bool inspectorVisible)
     {
-        var sidebar = Math.Min(sidebarPreferred, Math.Max(SidebarRange.Min, total * 0.19));
-        var inspector = Math.Min(inspectorPreferred, Math.Max(InspectorRange.Min, total * 0.25));
+        var sidebar = Math.Clamp(sidebarPreferred, SidebarRange.Min, SidebarRange.Max);
+        var inspector = Math.Clamp(inspectorPreferred, InspectorRange.Min, InspectorRange.Max);
+        var excess = CenterMinWidth - total
+            + (sidebarVisible ? sidebar + 1 : 0)
+            + (inspectorVisible ? inspector + 1 : 0);
+        if (excess > 0 && inspectorVisible)
+        {
+            var cut = Math.Min(excess, inspector - InspectorRange.Min);
+            inspector -= cut;
+            excess -= cut;
+        }
+
+        if (excess > 0 && sidebarVisible) sidebar -= Math.Min(excess, sidebar - SidebarRange.Min);
         return (sidebar, inspector);
     }
 

@@ -2,7 +2,7 @@ namespace TodoApp.State;
 
 public enum SidebarKind
 {
-    Inbox,
+    AllTasks,
     Today,
     Upcoming,
     Completed,
@@ -13,7 +13,7 @@ public enum SidebarKind
 /// <summary>A place in the sidebar. <see cref="ProjectId"/> is set only for <see cref="SidebarKind.Project"/>.</summary>
 public readonly record struct SidebarItem(SidebarKind Kind, Guid? ProjectId)
 {
-    public static SidebarItem Inbox => new(SidebarKind.Inbox, null);
+    public static SidebarItem AllTasks => new(SidebarKind.AllTasks, null);
 
     public static SidebarItem Today => new(SidebarKind.Today, null);
 

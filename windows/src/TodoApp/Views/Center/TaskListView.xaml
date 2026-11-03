@@ -35,6 +35,12 @@
       </ItemsRepeater>
       <local:EmptyState x:Name="Empty" HorizontalAlignment="Center" Visibility="Collapsed" />
       <local:NewTaskComposer x:Name="Composer" />
+      <!-- A project's finished tasks, one section a day, below the composer. -->
+      <ItemsRepeater x:Name="HistoryRepeater">
+        <ItemsRepeater.Layout>
+          <StackLayout />
+        </ItemsRepeater.Layout>
+      </ItemsRepeater>
     </StackPanel>
   </ScrollViewer>
 </UserControl>

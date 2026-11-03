@@ -38,6 +38,65 @@ public sealed class SettingsTests : IDisposable
     }
 
     [Fact]
+    public void NewKeys_RoundTrip()
+    {
+        var path = PathIn("settings.json");
+        var project = Guid.Parse("0905AB33-A30F-4D94-8D6F-7BE7F7B0CA90");
+        var task = Guid.Parse("5A8AD87C-2B61-4D86-B8E7-321521337615");
+        var custom = new AppSettings
+        {
+            SidebarSelection = "project:0905AB33-A30F-4D94-8D6F-7BE7F7B0CA90",
+            SelectedTask = task,
+            SidebarVisible = false,
+            PriorityFilter = ValueList.Of(3, 1),
+            HiddenElements = ValueList.Of("rowNotes", "toolbarSearch"),
+            CollapsedProjects = ValueList.Of(project),
+        };
+
+        custom.Save(path);
+
+        Assert.Equal(custom, AppSettings.Load(path));
+        var json = File.ReadAllText(path);
+        Assert.Contains("\"sidebarSelection\": \"project:0905AB33-A30F-4D94-8D6F-7BE7F7B0CA90\"", json);
+        Assert.Contains("\"selectedTask\": \"5A8AD87C-2B61-4D86-B8E7-321521337615\"", json);
+        Assert.Contains("\"sidebarVisible\": false", json);
+        Assert.Contains("\"priorityFilter\"", json);
+        Assert.Contains("\"hiddenElements\"", json);
+        Assert.Contains("\"collapsedProjects\"", json);
+    }
+
+    [Fact]
+    public void NewKeys_AbsentWhenUnset()
+    {
+        var path = PathIn("settings.json");
+        new AppSettings().Save(path);
+        var json = File.ReadAllText(path);
+        Assert.DoesNotContain("sidebarSelection", json);
+        Assert.DoesNotContain("selectedTask", json);
+        Assert.Equal(new AppSettings(), AppSettings.Load(path));
+    }
+
+    [Fact]
+    public void NewKeys_BadEntriesDropped()
+    {
+        var path = PathIn("settings.json");
+        File.WriteAllText(path, """
+            { "hiddenElements": ["rowNotes", "bogus", 7], "priorityFilter": [3, 9, "x"],
+              "collapsedProjects": ["x", "0905AB33-A30F-4D94-8D6F-7BE7F7B0CA90"], "selectedTask": "nope",
+              "sidebarSelection": 12, "sidebarVisible": "no" }
+            """);
+
+        var settings = AppSettings.Load(path);
+
+        Assert.Equal(new[] { "rowNotes" }, settings.HiddenElements);
+        Assert.Equal(new[] { 3 }, settings.PriorityFilter);
+        Assert.Equal(new[] { Guid.Parse("0905AB33-A30F-4D94-8D6F-7BE7F7B0CA90") }, settings.CollapsedProjects);
+        Assert.Null(settings.SelectedTask);
+        Assert.Null(settings.SidebarSelection);
+        Assert.True(settings.SidebarVisible);
+    }
+
+    [Fact]
     public void Defaults_MatchTheMac()
     {
         var defaults = new AppSettings();

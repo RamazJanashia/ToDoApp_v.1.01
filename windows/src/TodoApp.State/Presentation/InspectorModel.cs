@@ -22,8 +22,13 @@ public sealed record InspectorModel(
     IReadOnlyList<Subtask> Subtasks,
     string? SubtaskProgress,
     IReadOnlyList<Attachment> Attachments,
-    string CreatedText)
+    string CreatedText,
+    double SubtaskFraction,
+    IReadOnlySet<WorkspaceElement> Hidden)
 {
+    /// <summary>Whether a row or section of the details is switched on in Settings.</summary>
+    public bool Shows(WorkspaceElement element) => !Hidden.Contains(element);
+
     /// <summary>Null when no task is selected.</summary>
     public static InspectorModel? Build(AppState s)
     {
@@ -54,7 +59,7 @@ public sealed record InspectorModel(
             : new PropertyRowModel("flag", PriorityStyle.Token(task.Priority), null, task.Priority.Title(), false);
 
         var projectRow = project is null
-            ? new PropertyRowModel("tray", "Secondary", null, "Inbox", false)
+            ? new PropertyRowModel("tray", "Secondary", null, "No Project", false)
             : new PropertyRowModel(project.Icon, "Project", project.Color, project.Name, false);
 
         var repeat = new PropertyRowModel("repeat", "Secondary", null, task.Recurrence?.Summary ?? "Doesn’t repeat", task.Recurrence is null);
@@ -80,7 +85,9 @@ public sealed record InspectorModel(
             task.Subtasks,
             TaskMeta.SubtaskProgress(task),
             task.Attachments,
-            "Created " + calendar.ToLocal(task.CreatedAt).ToString("MMM d, yyyy", CultureInfo.CurrentCulture));
+            "Created " + calendar.ToLocal(task.CreatedAt).ToString("MMM d, yyyy", CultureInfo.CurrentCulture),
+            task.Progress,
+            s.HiddenElements.ToHashSet());
     }
 }
 

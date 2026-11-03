@@ -38,7 +38,7 @@
           <Grid x:Name="MetricsHost" />
         </Border>
 
-        <StackPanel Margin="0,34,0,0" Spacing="4">
+        <StackPanel x:Name="ActivityHeader" Margin="0,34,0,0" Spacing="4">
           <TextBlock Style="{StaticResource SectionHeaderText}" Text="ACTIVITY" />
           <TextBlock
               Style="{StaticResource CaptionText}"

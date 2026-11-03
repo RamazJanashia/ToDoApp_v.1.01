@@ -29,7 +29,8 @@ public sealed partial class CenterHeader : UserControl
     {
         ArgumentNullException.ThrowIfNull(state);
         _state = state;
-        var model = HeaderModel.Build(state, state.VisibleTasks);
+        // Counted without a project's finished tasks from earlier days.
+        var model = HeaderModel.Build(state, state.CurrentTasks);
 
         TitleText.Text = model.Title;
         SubtitleText.Text = model.Subtitle;
@@ -46,6 +47,10 @@ public sealed partial class CenterHeader : UserControl
         };
         VisualStateManager.GoToState(this, mode, false);
         VisualStateManager.GoToState(this, IsFiltering(state) ? "Filtering" : "NotFiltering", false);
+        // Only the views left on in Settings.
+        ListButton.Visibility = state.Shows(WorkspaceElement.ListView) ? Visibility.Visible : Visibility.Collapsed;
+        BoardButton.Visibility = state.Shows(WorkspaceElement.BoardView) ? Visibility.Visible : Visibility.Collapsed;
+        CalendarButton.Visibility = state.Shows(WorkspaceElement.CalendarView) ? Visibility.Visible : Visibility.Collapsed;
 
         // Never empty, so the button always has a menu to open; Opening keeps it current.
         if (FilterMenu.Items.Count == 0) FillFilterMenu();

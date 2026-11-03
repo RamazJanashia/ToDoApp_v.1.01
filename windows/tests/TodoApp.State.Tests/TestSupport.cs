@@ -56,6 +56,8 @@ internal sealed class FakeReminders : IReminderScheduler
 
     public List<(IReadOnlyList<TaskItem> Tasks, IReadOnlyList<Project> Projects)> Syncs { get; } = new();
 
+    public bool AreNotificationsBlocked { get; set; }
+
     public event EventHandler<Guid>? OpenTaskRequested
     {
         add { }

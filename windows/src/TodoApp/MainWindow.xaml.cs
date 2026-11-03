@@ -29,6 +29,7 @@ public sealed partial class MainWindow : Window
     private readonly SidebarView _sidebar;
     private readonly CenterView _center;
     private readonly InspectorView _inspector;
+    private readonly AlertPresenter _alerts;
     private bool _renderQueued;
     private double _sidebarWidth;
     private double _inspectorWidth;
@@ -70,7 +71,8 @@ public sealed partial class MainWindow : Window
 
         State.Changed += (_, _) => RenderSoon();
         State.TitleFocusRequested += (_, _) => _inspector.FocusTitle();
-        State.ProjectEditorRequested += async (_, projectId) => await ShowDialogAsync(root => ProjectEditorDialog.ShowAsync(root, State, projectId));
+        State.SettingsRequested += (_, _) => ShowSettings();
+        State.ProjectEditorRequested += async (_, request) => await ShowDialogAsync(root => ProjectEditorDialog.ShowAsync(root, State, request));
         State.ProjectDeletionRequested += async (_, project) => await ShowDialogAsync(root => Dialogs.ConfirmProjectDeletionAsync(root, State, project));
         Columns.SizeChanged += (_, _) => RenderColumns();
         Root.ActualThemeChanged += (_, _) => ColorCaptionButtons();
@@ -81,9 +83,11 @@ public sealed partial class MainWindow : Window
             Root.XamlRoot.Changed += (_, _) => InsetTitleBar();
             // The search box is the first thing that can take focus; the keys belong to the list until it is clicked.
             CenterHost.Focus(FocusState.Pointer);
-            // Once, after the first render: tasks that couldn't be read were set aside, and the user should know.
-            if (State.Store.LoadIssue is { } issue) _ = ShowDialogAsync(root => ShowLoadIssueAsync(root, issue));
+            // After the first render: a problem found while loading, such as tasks that couldn't be read.
+            ShowStoreAlert();
         };
+        _alerts = new AlertPresenter(State.Store, () => Dialogs.IsOpen, alert => ShowDialogAsync(root => ShowAlertAsync(root, alert)));
+        State.Store.AlertRaised += (_, _) => ShowStoreAlert();
         AppWindow.Closing += (_, _) => State.Store.SaveNow();
         Activated += (_, args) =>
         {
@@ -177,6 +181,8 @@ public sealed partial class MainWindow : Window
         AppearanceButton.Flyout = appearance;
 
         InspectorButton.Click += (_, _) => State.IsInspectorVisible = !State.IsInspectorVisible;
+        SidebarButton.Content = Glyphs.For("sidebar.left");
+        SidebarButton.Click += (_, _) => State.IsSidebarVisible = !State.IsSidebarVisible;
         MoreButton.Flyout = AppMenu.Build(this);
     }
 
@@ -187,15 +193,23 @@ public sealed partial class MainWindow : Window
         SearchBorder.BorderBrush = new SolidColorBrush(ThemeColor(key, Root.ActualTheme));
     }
 
-    /// <summary>"Couldn’t open your tasks" with what went wrong; the file was set aside and not overwritten.</summary>
-    private static Task ShowLoadIssueAsync(XamlRoot xamlRoot, string issue) => Dialogs.ShowAsync(
+    /// <summary>
+    /// The store's alert ("Couldn’t open your tasks", "Couldn’t save your tasks"…), once the window is up and no other
+    /// dialog is showing. One raised while a dialog is open waits for it to close (ShowDialogAsync calls this again).
+    /// </summary>
+    private void ShowStoreAlert()
+    {
+        if (Root.IsLoaded) _ = _alerts.ShowPendingAsync();
+    }
+
+    private static Task ShowAlertAsync(XamlRoot xamlRoot, StoreAlert alert) => Dialogs.ShowAsync(
         new ContentDialog
         {
-            Title = "Couldn’t open your tasks",
+            Title = alert.Title,
             Content = new TextBlock
             {
                 Style = (Style)Application.Current.Resources["BodyText"],
-                Text = issue,
+                Text = alert.Message,
                 TextWrapping = TextWrapping.Wrap,
             },
             CloseButtonText = "OK",
@@ -224,6 +238,12 @@ public sealed partial class MainWindow : Window
         AppearanceButton.Content = Glyphs.For(AppMenu.AppearanceIcon(State.Appearance));
         var inspectorTip = (State.IsInspectorVisible ? "Hide Inspector" : "Show Inspector") + " (Ctrl+Shift+I)";
         ToolTipService.SetToolTip(InspectorButton, inspectorTip);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(InspectorButton, AccessibleText.FromHelp(inspectorTip));
+        var sidebarTip = (State.IsSidebarVisible ? "Hide Sidebar" : "Show Sidebar") + " (Ctrl+Shift+S)";
+        ToolTipService.SetToolTip(SidebarButton, sidebarTip);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(SidebarButton, AccessibleText.FromHelp(sidebarTip));
+        SearchBorder.Visibility = State.Shows(WorkspaceElement.ToolbarSearch) ? Visibility.Visible : Visibility.Collapsed;
+        AppearanceButton.Visibility = State.Shows(WorkspaceElement.ToolbarAppearance) ? Visibility.Visible : Visibility.Collapsed;
         if (TextSync.ShouldPush(SearchBox.Text, State.SearchText, SearchBox.FocusState != FocusState.Unfocused)) SearchBox.Text = State.SearchText;
         RenderColumns();
         _sidebar.Render(State);
@@ -290,12 +310,18 @@ public sealed partial class MainWindow : Window
         {
             AppLog.Error("A dialog failed", ex);
         }
+        finally
+        {
+            // An alert raised while this dialog was open has been waiting for it to close.
+            ShowStoreAlert();
+        }
     }
 
     /// <summary>On small windows the side columns give way, down to their minimums (ColumnLayout).</summary>
     private void RenderColumns()
     {
-        (_sidebarWidth, _inspectorWidth) = ColumnLayout.Widths(Columns.ActualWidth, State.SidebarWidth, State.InspectorWidth);
+        (_sidebarWidth, _inspectorWidth) = ColumnLayout.Widths(
+            Columns.ActualWidth, State.SidebarWidth, State.InspectorWidth, State.IsSidebarVisible, State.IsInspectorVisible);
 
         var sidebar = State.IsSidebarVisible;
         SidebarColumn.Width = new GridLength(sidebar ? _sidebarWidth : 0);

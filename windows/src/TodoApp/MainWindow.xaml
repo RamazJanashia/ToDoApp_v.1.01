@@ -11,6 +11,13 @@
 
     <!-- Title bar: the window title centred; search, appearance and inspector on the right (placeholders for now). -->
     <Grid x:Name="TitleBarArea" Background="Transparent">
+      <Button
+          x:Name="SidebarButton"
+          Style="{StaticResource IconButtonStyle}"
+          FontSize="15"
+          Margin="12,0,0,0"
+          HorizontalAlignment="Left"
+          VerticalAlignment="Center" />
       <TextBlock
           x:Name="TitleText"
           Style="{StaticResource AppTextBase}"

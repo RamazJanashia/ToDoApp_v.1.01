@@ -79,7 +79,7 @@ public sealed record LaunchOptions(
 
     private static SidebarItem? ParseSidebar(string? value) => value?.ToLowerInvariant() switch
     {
-        "inbox" => SidebarItem.Inbox,
+        "alltasks" => SidebarItem.AllTasks,
         "today" => SidebarItem.Today,
         "upcoming" => SidebarItem.Upcoming,
         "completed" => SidebarItem.Completed,

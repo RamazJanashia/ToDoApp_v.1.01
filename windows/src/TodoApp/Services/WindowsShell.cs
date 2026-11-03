@@ -22,28 +22,37 @@ public static class WindowsShell
     public static IntPtr WindowHandle { get; set; }
 
     /// <summary>
-    /// Opens a local file, or a web or mail address, with whatever Windows associates with it. A link can come from
-    /// a drop or a hand-edited tasks.json, so any other scheme (ms-msdt:, file://, a network share…) is refused.
-    /// Failures are logged without the full path or address.
+    /// Opens a web or mail address in the default browser or mail app. A link can come from a drop or a hand-edited
+    /// tasks.json, so anything else (a local path, file://, ms-msdt:, a network share…) is refused, never opened as a
+    /// file. Failures are logged without the full address.
     /// </summary>
-    public static Task OpenAsync(string pathOrUrl)
+    public static void OpenLink(string address)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(pathOrUrl);
-        string target;
-        if (Uri.TryCreate(pathOrUrl, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" or "mailto")
+        ArgumentException.ThrowIfNullOrWhiteSpace(address);
+        if (!Uri.TryCreate(address, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https" or "mailto"))
         {
-            target = uri.AbsoluteUri;
-        }
-        else if (LocalFile(pathOrUrl) is { } local)
-        {
-            target = local;
-        }
-        else
-        {
-            AppLog.Error("Refused to open an attachment that is neither a local file nor a web or mail address", null);
-            return Task.CompletedTask;
+            AppLog.Error("Refused to open a link that is not a web or mail address", null);
+            return;
         }
 
+        Start(uri.AbsoluteUri);
+    }
+
+    /// <summary>Opens a file on a local drive with the app Windows associates with it. Anything else is refused.</summary>
+    public static void OpenFile(string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        if (LocalFile(path) is not { } local)
+        {
+            AppLog.Error("Refused to open an attachment that is not a file on a local drive", null);
+            return;
+        }
+
+        Start(local);
+    }
+
+    private static void Start(string target)
+    {
         try
         {
             Process.Start(new ProcessStartInfo(target) { UseShellExecute = true })?.Dispose();
@@ -52,8 +61,6 @@ public static class WindowsShell
         {
             AppLog.Error($"Couldn't open {Describe(target)}", ex);
         }
-
-        return Task.CompletedTask;
     }
 
     /// <summary>
@@ -79,6 +86,20 @@ public static class WindowsShell
         Uri.TryCreate(target, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" or "mailto"
             ? uri.Scheme + "://" + uri.Host
             : Path.GetFileName(target);
+
+    /// <summary>Opens a folder in File Explorer.</summary>
+    public static void OpenFolder(string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        try
+        {
+            Process.Start(new ProcessStartInfo("explorer.exe") { Arguments = $"\"{path}\"", UseShellExecute = true })?.Dispose();
+        }
+        catch (Exception ex) when (ex is Win32Exception or InvalidOperationException)
+        {
+            AppLog.Error("Couldn't open the data folder", ex);
+        }
+    }
 
     /// <summary>Opens File Explorer with the file selected.</summary>
     public static void RevealInExplorer(string path)

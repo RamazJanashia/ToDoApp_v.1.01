@@ -46,7 +46,10 @@ public static class Program
             SynchronizationContext.SetSynchronizationContext(new DispatcherQueueSynchronizationContext(queue));
 
             var clock = new SystemClock();
-            var reminders = new ToastReminderScheduler(clock, queue);
+            // Reminders stay off on another data folder, so trying things out can't disturb the real ones.
+            IReminderScheduler reminders = options.DataDirectory is null
+                ? new ToastReminderScheduler(clock, queue)
+                : new DisabledReminderScheduler();
             var store = new TaskStore(directory, clock, new DispatcherDebouncer(queue, SaveDelay), reminders);
             settings = new SettingsFile(Path.Combine(directory, "settings.json"), options, new DispatcherDebouncer(queue, SaveDelay));
             var state = new AppState(store, clock, settings.Initial, settings.Save);

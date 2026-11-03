@@ -20,6 +20,150 @@ public sealed class TaskStoreTests : IDisposable
     private static AppData ReadFile(string directory) => new DataFileStore(directory).Load()!;
 
     [Fact]
+    public void Duplicate_DropsOccurrenceLink()
+    {
+        var store = NewStore();
+        var task = store.CreateTask("Linked");
+        store.UpdateTask(task.Id, "Link", t => t with
+        {
+            NextOccurrenceId = Guid.NewGuid(),
+            NextOccurrenceDueDate = Now,
+            NextOccurrenceRule = RecurrenceRule.Daily,
+        });
+
+        var copy = store.DuplicateTask(task.Id)!;
+
+        Assert.Null(copy.NextOccurrenceId);
+        Assert.Null(copy.NextOccurrenceDueDate);
+        Assert.Null(copy.NextOccurrenceRule);
+        Assert.Equal(Now, copy.CreatedAt);
+    }
+
+    [Fact]
+    public void MoveTask_RenumbersWhenNoRoom_AndUndoes()
+    {
+        var store = NewStore();
+        var ids = new[] { "A", "B", "C" }.Select(title => store.CreateTask(title).Id).ToList();
+        store.UpdateTasks(ids, "Flatten", t => t with { SortOrder = 1 });
+        var shown = ids.Select(id => store.FindTask(id)!).ToList();
+
+        store.MoveTask(ids[2], ids[1], shown);
+
+        var orders = ids.Select(id => store.FindTask(id)!.SortOrder).ToList();
+        Assert.Equal(3, orders.Distinct().Count());
+        Assert.True(orders[0] < orders[2] && orders[2] < orders[1]);
+        Assert.Equal("Move Task", store.Undo.UndoActionName);
+
+        store.Undo.Undo();
+        Assert.All(ids, id => Assert.Equal(1, store.FindTask(id)!.SortOrder));
+    }
+
+    [Fact]
+    public void UndoRedo_NeverBringsBackBlankDraft()
+    {
+        var store = NewStore();
+        var draft = store.CreateTask("");
+
+        store.Undo.Undo();
+        Assert.Null(store.FindTask(draft.Id));
+        store.Undo.Redo();
+        Assert.Null(store.FindTask(draft.Id));
+    }
+
+    [Fact]
+    public void UndoRedo_StillBringsBackRealTasks()
+    {
+        var store = NewStore();
+        var task = store.CreateTask("Real");
+
+        store.Undo.Undo();
+        store.Undo.Redo();
+        Assert.NotNull(store.FindTask(task.Id));
+    }
+
+    [Fact]
+    public void CreateProject_UnderParent()
+    {
+        var store = NewStore();
+        var parent = store.CreateProject("Work", "folder", ProjectColor.Blue);
+        var child = store.CreateProject("Clients", "folder", ProjectColor.Blue, parent.Id);
+        Assert.Equal(parent.Id, store.FindProject(child.Id)!.ParentId);
+    }
+
+    [Fact]
+    public void DeleteProject_MovesContentsUp_Undoable()
+    {
+        var store = NewStore();
+        var parent = store.CreateProject("Work", "folder", ProjectColor.Blue);
+        var child = store.CreateProject("Clients", "folder", ProjectColor.Blue, parent.Id);
+        var grandchild = store.CreateProject("Acme", "folder", ProjectColor.Blue, child.Id);
+        var task = store.CreateTask("In child", child.Id);
+
+        store.DeleteProject(child.Id);
+
+        Assert.Null(store.FindProject(child.Id));
+        Assert.Equal(parent.Id, store.FindTask(task.Id)!.ProjectId);
+        Assert.Equal(parent.Id, store.FindProject(grandchild.Id)!.ParentId);
+
+        store.Undo.Undo();
+        Assert.NotNull(store.FindProject(child.Id));
+        Assert.Equal(child.Id, store.FindTask(task.Id)!.ProjectId);
+        Assert.Equal(child.Id, store.FindProject(grandchild.Id)!.ParentId);
+    }
+
+    [Fact]
+    public void MoveProject_IntoOwnSubtree_DoesNothing()
+    {
+        var store = NewStore();
+        var parent = store.CreateProject("Work", "folder", ProjectColor.Blue);
+        var child = store.CreateProject("Clients", "folder", ProjectColor.Blue, parent.Id);
+        var before = store.Projects;
+
+        store.MoveProject(parent.Id, child.Id);
+
+        Assert.Same(before, store.Projects);
+        Assert.Equal("New Project", store.Undo.UndoActionName);
+    }
+
+    [Fact]
+    public void MoveProject_BesideSubproject_JoinsItsParent()
+    {
+        var store = NewStore();
+        var parent = store.CreateProject("Work", "folder", ProjectColor.Blue);
+        var child = store.CreateProject("Clients", "folder", ProjectColor.Blue, parent.Id);
+        var loner = store.CreateProject("Home", "house", ProjectColor.Green);
+
+        store.MoveProject(loner.Id, child.Id);
+
+        Assert.Equal(parent.Id, store.FindProject(loner.Id)!.ParentId);
+        Assert.Equal("Move Project", store.Undo.UndoActionName);
+    }
+
+    [Fact]
+    public void ConfirmRemindersAllowed_AlertsWhenBlocked()
+    {
+        var store = NewStore();
+        store.ConfirmRemindersAllowed();
+        Assert.Null(store.Alert);
+
+        _reminders.AreNotificationsBlocked = true;
+        store.ConfirmRemindersAllowed();
+        Assert.Equal("Reminders are turned off", store.Alert?.Title);
+        Assert.Contains("Settings ▸ System ▸ Notifications", store.Alert!.Message);
+    }
+
+    [Fact]
+    public void ResyncReminders_Syncs()
+    {
+        var store = NewStore();
+        _reminders.Calls.Clear();
+
+        store.ResyncReminders();
+
+        Assert.Equal(new[] { "Sync" }, _reminders.Calls);
+    }
+
+    [Fact]
     public void FirstRun_SeedsSampleAndSaves()
     {
         var store = NewStore();

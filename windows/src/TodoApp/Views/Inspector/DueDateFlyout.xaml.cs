@@ -32,7 +32,7 @@ public sealed partial class DueDateFlyout : UserControl
         TomorrowChip.Click += (_, _) => SetDay(1);
         NextWeekChip.Click += (_, _) =>
         {
-            if (_state is { } state) Reschedule(state.NextWeekStart());
+            if (_state is { } state) Reschedule(state.DayFor(QuickDue.NextWeek));
         };
         Month.DaySelected += (_, day) => Reschedule(day);
         TimeSwitch.Toggled += OnTimeToggled;

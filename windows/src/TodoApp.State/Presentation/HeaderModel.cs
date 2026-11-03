@@ -35,11 +35,13 @@ public sealed record HeaderModel(string Title, string Subtitle, double Progress,
             };
         }
 
-        var showsProgress = !s.IsSearching
+        var showsProgress = s.Shows(WorkspaceElement.HeaderProgress)
+            && !s.IsSearching
             && count > 0
             && s.ViewMode != ViewMode.Calendar
             && kind is not (SidebarKind.Upcoming or SidebarKind.Completed);
 
-        return new HeaderModel(s.Title, subtitle, count == 0 ? 0 : (double)done / count, showsProgress);
+        // Half the subtasks of a task count as half a task.
+        return new HeaderModel(s.Title, subtitle, TaskItem.ProgressOf(tasks), showsProgress);
     }
 }

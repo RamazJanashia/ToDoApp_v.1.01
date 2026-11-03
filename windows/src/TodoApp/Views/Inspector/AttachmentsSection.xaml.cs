@@ -124,7 +124,7 @@ public sealed partial class AttachmentsSection : UserControl
             WinRT.Interop.InitializeWithWindow.Initialize(picker, WindowsShell.WindowHandle);
             var files = await picker.PickMultipleFilesAsync();
             if (files is null || files.Count == 0) return;
-            state.Store.AttachFiles(files.Select(f => f.Path).ToList(), id);
+            await state.Store.AttachFilesAsync(files.Select(f => f.Path).ToList(), id);
         }
         catch (Exception ex) when (ex is System.Runtime.InteropServices.COMException or InvalidOperationException)
         {
@@ -179,6 +179,7 @@ public sealed partial class AttachmentsSection : UserControl
             // A browser's link may come with a shortcut file too; the address is what the Mac attaches.
             if (view.Contains(StandardDataFormats.WebLink))
             {
+                // Only web and mail addresses are taken; anything else is refused, as when typed.
                 var uri = await view.GetWebLinkAsync();
                 state.Store.AttachLink(uri.AbsoluteUri, id);
             }
@@ -186,7 +187,7 @@ public sealed partial class AttachmentsSection : UserControl
             {
                 var items = await view.GetStorageItemsAsync();
                 var paths = items.OfType<StorageFile>().Select(f => f.Path).Where(p => p.Length > 0).ToList();
-                if (paths.Count > 0) state.Store.AttachFiles(paths, id);
+                if (paths.Count > 0) await state.Store.AttachFilesAsync(paths, id);
             }
         }
         catch (Exception ex) when (ex is System.Runtime.InteropServices.COMException or InvalidOperationException or ArgumentException)

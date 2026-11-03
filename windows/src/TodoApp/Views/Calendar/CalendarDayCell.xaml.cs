@@ -79,6 +79,8 @@ public sealed partial class CalendarDayCell : UserControl
 
         var compact = Root.ActualWidth < CompactBelow;
         ToolTipService.SetToolTip(Root, compact ? model.CompactTooltip : model.Tooltip);
+        // The full date, which the tooltip starts with.
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(Root, model.Tooltip);
 
         if (compact)
         {

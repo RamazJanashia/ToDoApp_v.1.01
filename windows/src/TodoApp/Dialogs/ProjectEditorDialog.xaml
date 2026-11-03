@@ -129,6 +129,9 @@
       </TextBox>
     </Grid>
 
+    <TextBlock Style="{StaticResource SectionHeaderText}" Text="INSIDE" Margin="0,22,0,6" />
+    <ComboBox x:Name="ParentBox" HorizontalAlignment="Stretch" AutomationProperties.Name="Inside" />
+
     <TextBlock Style="{StaticResource SectionHeaderText}" Text="COLOR" Margin="0,22,0,10" />
     <StackPanel x:Name="Swatches" Orientation="Horizontal" Spacing="10" />
 

@@ -25,7 +25,7 @@ public sealed class LaunchOptionsTests
     }
 
     [Theory]
-    [InlineData("inbox", SidebarKind.Inbox)]
+    [InlineData("alltasks", SidebarKind.AllTasks)]
     [InlineData("today", SidebarKind.Today)]
     [InlineData("upcoming", SidebarKind.Upcoming)]
     [InlineData("completed", SidebarKind.Completed)]

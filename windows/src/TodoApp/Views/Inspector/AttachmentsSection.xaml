@@ -79,7 +79,7 @@
           Style="{StaticResource SmallText}"
           Foreground="{ThemeResource RedBrush}"
           Margin="40,0,0,0"
-          Text="That doesn’t look like a web address."
+          Text="That doesn’t look like a web or mail address."
           Visibility="Collapsed" />
 
       <Grid x:Name="Zone" Margin="0,4,0,0" MinHeight="54" Visibility="Collapsed">

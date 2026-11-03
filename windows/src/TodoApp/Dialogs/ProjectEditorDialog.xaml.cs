@@ -22,29 +22,39 @@ public sealed partial class ProjectEditorDialog : ContentDialog
     private readonly ElementTheme _theme;
     private readonly Dictionary<ProjectColor, ToggleButton> _swatches = [];
     private readonly Dictionary<string, ToggleButton> _icons = [];
+    private readonly List<Guid?> _parentChoices = [];
     private string _icon = "folder";
     private ProjectColor _color = ProjectColor.Blue;
     private bool _deleteRequested;
 
-    private ProjectEditorDialog(AppState state, Guid? projectId, ElementTheme theme)
+    private ProjectEditorDialog(AppState state, ProjectEditorRequest request, ElementTheme theme)
     {
         _state = state;
-        _projectId = projectId;
+        _projectId = request.ProjectId;
         _theme = theme;
         InitializeComponent();
 
-        var isNew = projectId is null;
-        TitleText.Text = isNew ? "New Project" : "Edit Project";
+        var isNew = _projectId is null;
+        TitleText.Text = isNew ? (request.ParentId is null ? "New Project" : "New Sub-project") : "Edit Project";
         SaveButton.Content = isNew ? "Create" : "Save";
         DeleteButton.Visibility = isNew ? Visibility.Collapsed : Visibility.Visible;
 
-        if (state.Store.FindProject(projectId) is { } project)
+        Guid? parentId = null;
+        if (state.Store.FindProject(_projectId) is { } project)
         {
             NameBox.Text = project.Name;
             _icon = project.Icon;
             _color = project.Color;
+            parentId = project.ParentId;
+        }
+        else if (state.Store.FindProject(request.ParentId) is { } parent)
+        {
+            // A new sub-project starts in its parent's colour.
+            _color = parent.Color;
+            parentId = parent.Id;
         }
 
+        BuildParentChoices(parentId);
         BuildSwatches();
         BuildIcons();
         Refresh();
@@ -55,13 +65,15 @@ public sealed partial class ProjectEditorDialog : ContentDialog
     /// Shows the editor for a new project (<paramref name="projectId"/> null) or an existing one. Creating selects the
     /// new project. Returns once the dialog is closed.
     /// </summary>
-    public static async Task ShowAsync(XamlRoot xamlRoot, AppState state, Guid? projectId)
+    public static async Task ShowAsync(XamlRoot xamlRoot, AppState state, ProjectEditorRequest request)
     {
         ArgumentNullException.ThrowIfNull(xamlRoot);
         ArgumentNullException.ThrowIfNull(state);
+        ArgumentNullException.ThrowIfNull(request);
+        var projectId = request.ProjectId;
 
         var theme = xamlRoot.Content is FrameworkElement root ? root.ActualTheme : ElementTheme.Default;
-        var dialog = new ProjectEditorDialog(state, projectId, theme);
+        var dialog = new ProjectEditorDialog(state, request, theme);
         await Dialogs.ShowAsync(dialog, xamlRoot);
 
         // Asked for after this dialog has closed, as only one can be open at a time.
@@ -118,6 +130,26 @@ public sealed partial class ProjectEditorDialog : ContentDialog
         }
     }
 
+    /// <summary>
+    /// "Nothing (top level)", then every project it may sit inside (not itself or anything under it), indented four
+    /// spaces per level.
+    /// </summary>
+    private void BuildParentChoices(Guid? selected)
+    {
+        _parentChoices.Clear();
+        _parentChoices.Add(null);
+        ParentBox.Items.Add("Nothing (top level)");
+        foreach (var row in _state.Store.Projects.ParentChoices(_projectId))
+        {
+            _parentChoices.Add(row.Id);
+            ParentBox.Items.Add(new string(' ', 4 * row.Depth) + row.Project.Name);
+        }
+
+        ParentBox.SelectedIndex = Math.Max(0, _parentChoices.IndexOf(selected));
+    }
+
+    private Guid? SelectedParent => ParentBox.SelectedIndex is var index and >= 0 ? _parentChoices[index] : null;
+
     /// <summary>Redraws the preview, the swatch and icon selection and the Create/Save state.</summary>
     private void Refresh()
     {
@@ -166,15 +198,16 @@ public sealed partial class ProjectEditorDialog : ContentDialog
         var name = TrimmedName;
         if (name.Length == 0) return;
 
+        var parentId = SelectedParent;
         if (_projectId is { } id)
         {
             var icon = _icon;
             var color = _color;
-            _state.Store.UpdateProject(id, project => project with { Name = name, Icon = icon, Color = color });
+            _state.Store.UpdateProject(id, project => project with { Name = name, Icon = icon, Color = color, ParentId = parentId });
         }
         else
         {
-            var project = _state.Store.CreateProject(name, _icon, _color);
+            var project = _state.Store.CreateProject(name, _icon, _color, parentId);
             _state.Select(SidebarItem.Project(project.Id));
         }
 

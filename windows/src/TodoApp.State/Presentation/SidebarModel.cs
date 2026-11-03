@@ -3,9 +3,30 @@ using TodoCore;
 namespace TodoApp.State;
 
 /// <summary>One sidebar line. <see cref="Count"/> is null when there is nothing to show (zero, or a row without a counter).</summary>
-public sealed record SidebarRowModel(SidebarItem Item, string Icon, ProjectColor? Tint, string Title, int? Count, bool IsSelected);
+/// <param name="Depth">How many levels this project sits under others.</param>
+/// <param name="IsCollapsed">Null for a row with nothing under it.</param>
+public sealed record SidebarRowModel(
+    SidebarItem Item,
+    string Icon,
+    ProjectColor? Tint,
+    string Title,
+    int? Count,
+    bool IsSelected,
+    int Depth = 0,
+    bool? IsCollapsed = null)
+{
+    /// <summary>All Tasks lists everything and the Dashboard lists nothing, so tasks can't be filed there.</summary>
+    public bool AcceptsDrops => Item.Kind is not (SidebarKind.Dashboard or SidebarKind.AllTasks);
+}
 
-public sealed record SidebarModel(IReadOnlyList<SidebarRowModel> Workspace, IReadOnlyList<SidebarRowModel> Projects, bool ShowsEmptyProjectsHint)
+/// <param name="ShowsWorkspaceHeader">False when every place above the projects has been hidden.</param>
+/// <param name="ShowsProjects">False when the projects have been hidden in Settings.</param>
+public sealed record SidebarModel(
+    IReadOnlyList<SidebarRowModel> Workspace,
+    IReadOnlyList<SidebarRowModel> Projects,
+    bool ShowsEmptyProjectsHint,
+    bool ShowsWorkspaceHeader,
+    bool ShowsProjects)
 {
     public static SidebarModel Build(AppState s)
     {
@@ -24,18 +45,33 @@ public sealed record SidebarModel(IReadOnlyList<SidebarRowModel> Workspace, IRea
             new(item, icon, tint, title, scope is { } value ? Count(value) : null, s.SidebarSelection == item && !s.IsSearching);
 
         var workspace = new[]
-        {
-            Row(SidebarItem.Inbox, "tray", null, "Inbox", TaskScope.Inbox),
-            Row(SidebarItem.Today, "sun.max", null, "Today", TaskScope.Today),
-            Row(SidebarItem.Upcoming, "calendar", null, "Upcoming", TaskScope.Upcoming),
-            Row(SidebarItem.Completed, "checkmark.circle", null, "Completed", null),
-            Row(SidebarItem.Dashboard, "square.grid.2x2", null, "Dashboard", null),
-        };
-
-        var projects = s.Store.Projects
-            .Select(p => Row(SidebarItem.Project(p.Id), p.Icon, p.Color, p.Name, TaskScope.Project(p.Id)))
+            {
+                Row(SidebarItem.AllTasks, "tray", null, "All Tasks", TaskScope.AllOpen),
+                Row(SidebarItem.Today, "sun.max", null, "Today", TaskScope.Today),
+                Row(SidebarItem.Upcoming, "calendar", null, "Upcoming", TaskScope.Upcoming),
+                Row(SidebarItem.Completed, "checkmark.circle", null, "Completed", null),
+                Row(SidebarItem.Dashboard, "square.grid.2x2", null, "Dashboard", null),
+            }
+            .Where(row => s.Shows(row.Item.Element()))
             .ToList();
 
-        return new SidebarModel(workspace, projects, projects.Count == 0);
+        var showsProjects = s.Shows(WorkspaceElement.Projects);
+        var all = s.Store.Projects;
+        var projects = showsProjects
+            ? all.Outline(s.CollapsedProjects)
+                .Select(row => Row(
+                        SidebarItem.Project(row.Id),
+                        row.Project.Icon,
+                        row.Project.Color,
+                        row.Project.Name,
+                        TaskScope.Projects(all.SubtreeIds(row.Id))) with
+                    {
+                        Depth = row.Depth,
+                        IsCollapsed = row.HasChildren ? s.CollapsedProjects.Contains(row.Id) : null,
+                    })
+                .ToList()
+            : new List<SidebarRowModel>();
+
+        return new SidebarModel(workspace, projects, showsProjects && all.Count == 0, workspace.Count > 0, showsProjects);
     }
 }

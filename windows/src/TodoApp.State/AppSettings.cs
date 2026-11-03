@@ -22,6 +22,22 @@ public sealed record AppSettings(
 {
     private static readonly JsonSerializerOptions WriteOptions = new() { WriteIndented = true };
 
+    /// <summary>The open place, as <see cref="SidebarItems.StorageKey"/> writes it; null for the default (Today).</summary>
+    public string? SidebarSelection { get; init; }
+
+    public Guid? SelectedTask { get; init; }
+
+    public bool SidebarVisible { get; init; } = true;
+
+    /// <summary>Priority raw values (0 none … 3 high).</summary>
+    public ValueList<int> PriorityFilter { get; init; } = ValueList<int>.Empty;
+
+    /// <summary>What the user switched off in Settings, as <see cref="WorkspaceElements.RawValue"/> names.</summary>
+    public ValueList<string> HiddenElements { get; init; } = ValueList<string>.Empty;
+
+    /// <summary>Projects whose sub-projects are folded away in the sidebar.</summary>
+    public ValueList<Guid> CollapsedProjects { get; init; } = ValueList<Guid>.Empty;
+
     /// <summary>Missing or corrupt file gives defaults; an unrecognised value only resets its own field.</summary>
     public static AppSettings Load(string path)
     {
@@ -40,7 +56,24 @@ public sealed record AppSettings(
                 ReadBool(root, "inspectorVisible", defaults.InspectorVisible),
                 ReadEnum(root, "appearance", AppearanceNames, defaults.Appearance),
                 ReadWidth(root, "sidebarWidth", defaults.SidebarWidth),
-                ReadWidth(root, "inspectorWidth", defaults.InspectorWidth));
+                ReadWidth(root, "inspectorWidth", defaults.InspectorWidth))
+            {
+                SidebarSelection = ReadString(root, "sidebarSelection"),
+                SelectedTask = ReadString(root, "selectedTask") is { } task && Guid.TryParseExact(task, "D", out var id) ? id : null,
+                SidebarVisible = ReadBool(root, "sidebarVisible", defaults.SidebarVisible),
+                PriorityFilter = ReadArray(root, "priorityFilter", element =>
+                    element.ValueKind == JsonValueKind.Number && element.TryGetInt32(out var value) && Enum.IsDefined((Priority)value)
+                        ? value
+                        : (int?)null),
+                HiddenElements = ReadArray(root, "hiddenElements", element =>
+                    element.ValueKind == JsonValueKind.String && WorkspaceElements.Parse(element.GetString()!) is not null
+                        ? element.GetString()
+                        : null),
+                CollapsedProjects = ReadArray(root, "collapsedProjects", element =>
+                    element.ValueKind == JsonValueKind.String && Guid.TryParseExact(element.GetString(), "D", out var project)
+                        ? project
+                        : (Guid?)null),
+            };
         }
         catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException or InvalidOperationException)
         {
@@ -67,7 +100,13 @@ public sealed record AppSettings(
                 ["appearance"] = AppearanceNames.First(pair => pair.Value == Appearance).Key,
                 ["sidebarWidth"] = SidebarWidth,
                 ["inspectorWidth"] = InspectorWidth,
+                ["sidebarVisible"] = SidebarVisible,
+                ["priorityFilter"] = PriorityFilter.ToArray(),
+                ["hiddenElements"] = HiddenElements.ToArray(),
+                ["collapsedProjects"] = CollapsedProjects.Select(Upper).ToArray(),
             };
+            if (SidebarSelection is not null) values["sidebarSelection"] = SidebarSelection;
+            if (SelectedTask is { } selected) values["selectedTask"] = Upper(selected);
             var bytes = JsonSerializer.SerializeToUtf8Bytes(values, WriteOptions);
             using (var stream = new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None))
             {
@@ -119,6 +158,25 @@ public sealed record AppSettings(
         root.TryGetProperty(key, out var element) && element.ValueKind is JsonValueKind.True or JsonValueKind.False
             ? element.GetBoolean()
             : fallback;
+
+    /// <summary>UUIDs as the Mac writes them.</summary>
+    private static string Upper(Guid id) => id.ToString("D").ToUpperInvariant();
+
+    private static string? ReadString(JsonElement root, string key) =>
+        root.TryGetProperty(key, out var element) && element.ValueKind == JsonValueKind.String ? element.GetString() : null;
+
+    /// <summary>The entries <paramref name="read"/> accepts; anything else in the array is dropped on its own.</summary>
+    private static ValueList<T> ReadArray<T>(JsonElement root, string key, Func<JsonElement, T?> read) where T : struct
+    {
+        if (!root.TryGetProperty(key, out var element) || element.ValueKind != JsonValueKind.Array) return ValueList<T>.Empty;
+        return new ValueList<T>(element.EnumerateArray().Select(read).Where(v => v is not null).Select(v => v!.Value));
+    }
+
+    private static ValueList<string> ReadArray(JsonElement root, string key, Func<JsonElement, string?> read)
+    {
+        if (!root.TryGetProperty(key, out var element) || element.ValueKind != JsonValueKind.Array) return ValueList<string>.Empty;
+        return new ValueList<string>(element.EnumerateArray().Select(read).OfType<string>());
+    }
 
     private static double ReadWidth(JsonElement root, string key, double fallback) =>
         root.TryGetProperty(key, out var element) && element.ValueKind == JsonValueKind.Number

@@ -25,6 +25,8 @@ public sealed partial class CheckCircle : Grid
     private readonly Ellipse _disc = new();
     private readonly FontIcon _tick = new() { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
     private readonly ScaleTransform _scale = new() { ScaleX = 1, ScaleY = 1 };
+    private static readonly Windows.UI.ViewManagement.UISettings Settings = new();
+
     private readonly Storyboard _pulse = new();
     private bool _isDone;
     private double _size = 20;
@@ -121,8 +123,13 @@ public sealed partial class CheckCircle : Grid
     private void OnTapped(object sender, TappedRoutedEventArgs e)
     {
         e.Handled = true;
-        _pulse.Stop();
-        _pulse.Begin();
+        // With animations turned off in Windows (Reduce Motion on the Mac), the change just happens.
+        if (Settings.AnimationsEnabled)
+        {
+            _pulse.Stop();
+            _pulse.Begin();
+        }
+
         Toggled?.Invoke(this, EventArgs.Empty);
     }
 

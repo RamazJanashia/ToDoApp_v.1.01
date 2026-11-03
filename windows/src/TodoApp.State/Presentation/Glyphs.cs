@@ -51,6 +51,8 @@ public static class Glyphs
         ["line.3.horizontal.decrease.circle.fill"] = "\uE71C",
         ["magnifyingglass"] = "\uE721",
         ["sidebar.right"] = "\uE90D",
+        ["sidebar.left"] = "\uE90C",
+        ["chevron.down"] = "\uE70D",
         ["xmark"] = "\uE711",
         ["ellipsis"] = "\uE712",
         ["xmark.circle.fill"] = "\uEB90",

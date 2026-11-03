@@ -26,7 +26,10 @@ public sealed record Attachment
     /// <summary>What the user sees: the original file name, or the link's host.</summary>
     public required string Name { get; init; }
 
-    /// <summary>Files: the name of the copy inside the attachments folder. Links: the absolute URL string.</summary>
+    /// <summary>
+    /// Files: the copy's path inside the attachments folder ("2026-11-02/{id}-report.pdf", or just the file name for
+    /// files attached before dated folders). Links: the absolute URL string.
+    /// </summary>
     public required string Location { get; init; }
 
     public DateTime AddedAt { get; init; } = DateTime.UtcNow;
@@ -68,6 +71,14 @@ public sealed record TaskItem
     /// </summary>
     public Guid? NextOccurrenceId { get; init; }
 
+    /// <summary>
+    /// The due date and rule that occurrence was created with, to tell whether it has been edited since, and to
+    /// take the rule back if the occurrence has been deleted.
+    /// </summary>
+    public DateTime? NextOccurrenceDueDate { get; init; }
+
+    public RecurrenceRule? NextOccurrenceRule { get; init; }
+
     public ValueList<Subtask> Subtasks { get; init; } = ValueList<Subtask>.Empty;
 
     public ValueList<Attachment> Attachments { get; init; } = ValueList<Attachment>.Empty;
@@ -81,7 +92,49 @@ public sealed record TaskItem
 
     public bool IsCompleted => Status == TaskStatus.Done;
 
+    public string DisplayTitle => Title.Length == 0 ? "Untitled" : Title;
+
+    /// <summary>Nothing the user wrote: what's left of a draft that was never filled in.</summary>
+    public bool IsBlank =>
+        string.IsNullOrWhiteSpace(Title) && string.IsNullOrWhiteSpace(Notes) && Subtasks.Count == 0 && Attachments.Count == 0;
+
+    /// <summary>A copy with its own identity, which doesn't claim the original's next occurrence.</summary>
+    public TaskItem Duplicated(DateTime now) =>
+        this with
+        {
+            Id = Guid.NewGuid(),
+            CreatedAt = now,
+            NextOccurrenceId = null,
+            NextOccurrenceDueDate = null,
+            NextOccurrenceRule = null,
+            Subtasks = new ValueList<Subtask>(Subtasks.Select(s => new Subtask { Title = s.Title, IsDone = s.IsDone })),
+            Attachments = new ValueList<Attachment>(Attachments.Select(a => new Attachment
+            {
+                Kind = a.Kind,
+                Name = a.Name,
+                Location = a.Location,
+                AddedAt = now,
+            })),
+        };
+
     public int CompletedSubtaskCount => Subtasks.Count(s => s.IsDone);
+
+    /// <summary>0…1. A finished task counts in full; otherwise its share of finished subtasks.</summary>
+    public double Progress
+    {
+        get
+        {
+            if (IsCompleted) return 1;
+            return Subtasks.Count == 0 ? 0 : (double)CompletedSubtaskCount / Subtasks.Count;
+        }
+    }
+
+    /// <summary>Progress across a list, where half the subtasks of a task count as half a task.</summary>
+    public static double ProgressOf(IReadOnlyList<TaskItem> tasks)
+    {
+        ArgumentNullException.ThrowIfNull(tasks);
+        return tasks.Count == 0 ? 0 : tasks.Sum(t => t.Progress) / tasks.Count;
+    }
 
     public TaskItem WithCompleted(bool completed, DateTime at) =>
         WithStatus(completed ? TaskStatus.Done : TaskStatus.Todo, at);
@@ -149,6 +202,8 @@ public sealed record TaskItem
             Id = Guid.NewGuid(),
             RecurrenceDay = preferred,
             NextOccurrenceId = null,
+            NextOccurrenceDueDate = null,
+            NextOccurrenceRule = null,
             Status = TaskStatus.Todo,
             CompletedAt = null,
             CreatedAt = now,

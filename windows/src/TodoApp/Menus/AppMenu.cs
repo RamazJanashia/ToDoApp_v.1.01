@@ -51,6 +51,8 @@ public static class AppMenu
         items.Add(Item("New Task", "Ctrl+N", state.BeginNewTask));
         items.Add(Item("New Project…", "Ctrl+Shift+N", () => state.RequestProjectEditor(null)));
         items.Add(new MenuFlyoutSeparator());
+        items.Add(Item("Show Data Folder", null, () => WindowsShell.OpenFolder(state.Store.DataDirectory)));
+        items.Add(new MenuFlyoutSeparator());
 
         var undo = state.Store.Undo;
         items.Add(Item(undo.UndoActionName is { } undoName ? "Undo " + undoName : "Undo", "Ctrl+Z", () => Accelerators.Undo(window), undo.CanUndo));
@@ -62,7 +64,7 @@ public static class AppMenu
         items.Add(GoMenu(state));
         items.Add(new MenuFlyoutSeparator());
 
-        items.Add(Item("Search Tasks", "Ctrl+F", state.FocusSearch));
+        items.Add(Item("Search Tasks", "Ctrl+F", state.FocusSearch, state.Shows(WorkspaceElement.ToolbarSearch)));
         items.Add(Item("Settings…", "Ctrl+,", window.ShowSettings));
     }
 
@@ -93,9 +95,9 @@ public static class AppMenu
         menu.Items.Add(priority);
 
         var due = new MenuFlyoutSubItem { Text = "Due Date" };
-        due.Items.Add(Item("Today", "Ctrl+T", () => state.SetDueOffset(0, id)));
-        due.Items.Add(Item("Tomorrow", "Ctrl+Shift+T", () => state.SetDueOffset(1, id)));
-        due.Items.Add(Item("Next Week", null, () => state.SetDueOffset(7, id)));
+        due.Items.Add(Item("Today", "Ctrl+T", () => state.SetDue(QuickDue.Today, ids)));
+        due.Items.Add(Item("Tomorrow", "Ctrl+Shift+T", () => state.SetDue(QuickDue.Tomorrow, ids)));
+        due.Items.Add(Item("Next Week", null, () => state.SetDue(QuickDue.NextWeek, ids)));
         due.Items.Add(new MenuFlyoutSeparator());
         due.Items.Add(Item("Remove Due Date", null, () => state.SetDueDay(null, ids)));
         menu.Items.Add(due);
@@ -116,6 +118,7 @@ public static class AppMenu
                 Text = "as " + mode,
                 GroupName = "ViewMode",
                 IsChecked = state.ViewMode == mode,
+                IsEnabled = state.Shows(mode.Element()),
                 KeyboardAcceleratorTextOverride = "Ctrl+" + number++,
             };
             item.Click += (_, _) => state.ViewMode = mode;
@@ -130,6 +133,7 @@ public static class AppMenu
         var appearance = new MenuFlyoutSubItem { Text = "Appearance" };
         FillAppearance(appearance.Items, state, withIcons: false);
         menu.Items.Add(appearance);
+        menu.Items.Add(Item("Customize…", null, state.OpenSettings));
         return menu;
     }
 
@@ -138,7 +142,7 @@ public static class AppMenu
         var menu = new MenuFlyoutSubItem { Text = "Go" };
         (string Title, SidebarItem Item)[] places =
         [
-            ("Inbox", SidebarItem.Inbox),
+            ("All Tasks", SidebarItem.AllTasks),
             ("Today", SidebarItem.Today),
             ("Upcoming", SidebarItem.Upcoming),
             ("Completed", SidebarItem.Completed),
@@ -147,14 +151,15 @@ public static class AppMenu
         for (var i = 0; i < places.Length; i++)
         {
             var place = places[i].Item;
-            menu.Items.Add(Item(places[i].Title, "Alt+" + (i + 1), () => state.Select(place)));
+            menu.Items.Add(Item(places[i].Title, "Alt+" + (i + 1), () => state.Select(place), state.Shows(place.Element())));
         }
 
-        if (state.Store.Projects.Count > 0) menu.Items.Add(new MenuFlyoutSeparator());
-        foreach (var project in state.Store.Projects)
+        if (state.Store.Projects.Count == 0 || !state.Shows(WorkspaceElement.Projects)) return menu;
+        menu.Items.Add(new MenuFlyoutSeparator());
+        foreach (var row in state.Store.Projects.Outline())
         {
-            var id = project.Id;
-            menu.Items.Add(Item(project.Name, null, () => state.Select(SidebarItem.Project(id))));
+            var id = row.Id;
+            menu.Items.Add(Item(new string(' ', 4 * row.Depth) + row.Project.Name, null, () => state.Select(SidebarItem.Project(id))));
         }
 
         return menu;

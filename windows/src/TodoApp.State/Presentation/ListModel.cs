@@ -6,7 +6,13 @@ public sealed record ListSectionModel(string Id, string? Title, string? Detail, 
 
 public sealed record EmptyStateModel(string Icon, string Title, string? Message);
 
-public sealed record ListModel(IReadOnlyList<ListSectionModel> Sections, EmptyStateModel? Empty, bool CanCompose)
+/// <param name="Sections">The open tasks' sections, above the new-task field.</param>
+/// <param name="History">A project's finished tasks, one section a day, below the new-task field.</param>
+public sealed record ListModel(
+    IReadOnlyList<ListSectionModel> Sections,
+    IReadOnlyList<ListSectionModel> History,
+    EmptyStateModel? Empty,
+    bool CanCompose)
 {
     public static ListModel Build(AppState s)
     {
@@ -17,17 +23,20 @@ public sealed record ListModel(IReadOnlyList<ListSectionModel> Sections, EmptySt
         var tasks = s.VisibleTasks;
         var hidesDueToday = scope.Kind == TaskScopeKind.Today;
 
-        var sections = TaskSection.Make(scope, tasks, now, calendar)
-            .Select(section => new ListSectionModel(
-                section.Id,
-                section.Title,
-                section.Detail,
-                section.IsWarning,
-                section.Tasks.Select(t => TaskMeta.Row(t, s.Store, s.SelectedTaskId, hidesDueToday, now, calendar)).ToList()))
-            .ToList();
+        var all = TaskSection.Make(scope, tasks, now, calendar);
+        ListSectionModel Model(TaskSection section) => new(
+            section.Id,
+            section.Title,
+            section.Detail,
+            section.IsWarning,
+            section.Tasks.Select(t => TaskMeta.Row(t, s, hidesDueToday, now, calendar)).ToList());
 
         var empty = tasks.Count == 0 && !s.IsComposing ? EmptyState(s) : null;
-        return new ListModel(sections, empty, !s.IsSearching && s.SidebarSelection != SidebarItem.Completed);
+        return new ListModel(
+            all.Where(section => !section.IsCompletedHistory).Select(Model).ToList(),
+            all.Where(section => section.IsCompletedHistory).Select(Model).ToList(),
+            empty,
+            !s.IsSearching && s.SidebarSelection != SidebarItem.Completed);
     }
 
     private static EmptyStateModel EmptyState(AppState s)

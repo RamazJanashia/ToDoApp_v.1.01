@@ -73,7 +73,10 @@ public sealed partial class TaskRow : UserControl
         VisualStateManager.GoToState(this, model.IsCompleted || model.IsUntitled ? "TitleDimmed" : "TitleNormal", false);
         Check.IsDone = model.IsCompleted;
         Meta.Show(model.Meta);
+        SubtaskProgress.Visibility = model.Progress is null ? Visibility.Collapsed : Visibility.Visible;
+        SubtaskProgress.Fraction = model.Progress ?? 0;
         Flag.Show(model.Priority, dimmed: model.IsCompleted);
+        Flag.Visibility = model.ShowsPriority ? Visibility.Visible : Visibility.Collapsed;
         AutomationProperties.SetName(this, model.Title);
         DropLine.Opacity = 0;
         UpdateHighlight();

@@ -14,6 +14,9 @@ public sealed partial class TaskListView : UserControl
 {
     /// <summary>Section headers and <see cref="TaskRowModel"/>s, in display order.</summary>
     private readonly ObservableCollection<object> _items = [];
+
+    /// <summary>The same for a project's finished tasks, shown below the composer.</summary>
+    private readonly ObservableCollection<object> _history = [];
     private AppState? _state;
     private Guid? _shownSelection;
     private bool _wasComposing;
@@ -21,15 +24,17 @@ public sealed partial class TaskListView : UserControl
     public TaskListView()
     {
         InitializeComponent();
-        Repeater.ItemTemplate = new ItemTemplates((DataTemplate)Resources["RowTemplate"], (DataTemplate)Resources["HeaderTemplate"]);
+        var templates = new ItemTemplates((DataTemplate)Resources["RowTemplate"], (DataTemplate)Resources["HeaderTemplate"]);
+        Repeater.ItemTemplate = templates;
         Repeater.ItemsSource = _items;
-        Repeater.ElementPrepared += OnElementPrepared;
+        Repeater.ElementPrepared += (_, e) => Prepare(_items, e);
+        HistoryRepeater.ItemTemplate = templates;
+        HistoryRepeater.ItemsSource = _history;
+        HistoryRepeater.ElementPrepared += (_, e) => Prepare(_history, e);
 
         // Clicking a row ends any text editing, so the arrow keys and Space go to the list (Mac: selectTask endEditing).
-        Repeater.Tapped += (_, _) =>
-        {
-            if (MainWindow.IsTextInputFocused(XamlRoot)) Scroller.Focus(FocusState.Pointer);
-        };
+        Repeater.Tapped += (_, _) => EndEditing();
+        HistoryRepeater.Tapped += (_, _) => EndEditing();
     }
 
     public void Render(AppState state)
@@ -38,14 +43,8 @@ public sealed partial class TaskListView : UserControl
         _state = state;
         var model = ListModel.Build(state);
 
-        var items = new List<object>();
-        foreach (var section in model.Sections)
-        {
-            if (section.Title is { } title) items.Add(new SectionHeaderItem(section.Id, title, section.Detail, section.IsWarning));
-            items.AddRange(section.Rows);
-        }
-
-        CollectionSync.Sync(_items, items, Key);
+        CollectionSync.Sync(_items, Flatten(model.Sections), Key);
+        CollectionSync.Sync(_history, Flatten(model.History), Key);
 
         Empty.Visibility = model.Empty is null ? Visibility.Collapsed : Visibility.Visible;
         if (model.Empty is { } empty) Empty.Show(empty);
@@ -69,10 +68,27 @@ public sealed partial class TaskListView : UserControl
         _ => throw new ArgumentException($"Unexpected list item {item.GetType()}", nameof(item)),
     };
 
-    private void OnElementPrepared(ItemsRepeater sender, ItemsRepeaterElementPreparedEventArgs e)
+    private static List<object> Flatten(IReadOnlyList<ListSectionModel> sections)
     {
-        if (_state is null || e.Index < 0 || e.Index >= _items.Count) return;
-        switch (_items[e.Index], e.Element)
+        var items = new List<object>();
+        foreach (var section in sections)
+        {
+            if (section.Title is { } title) items.Add(new SectionHeaderItem(section.Id, title, section.Detail, section.IsWarning));
+            items.AddRange(section.Rows);
+        }
+
+        return items;
+    }
+
+    private void EndEditing()
+    {
+        if (MainWindow.IsTextInputFocused(XamlRoot)) Scroller.Focus(FocusState.Pointer);
+    }
+
+    private void Prepare(ObservableCollection<object> items, ItemsRepeaterElementPreparedEventArgs e)
+    {
+        if (_state is null || e.Index < 0 || e.Index >= items.Count) return;
+        switch (items[e.Index], e.Element)
         {
             case (TaskRowModel model, TaskRow row):
                 row.Bind(_state, model);
@@ -101,21 +117,22 @@ public sealed partial class TaskListView : UserControl
         DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
         {
             if (!Repeater.IsLoaded || Visibility != Visibility.Visible) return;
-            var index = -1;
-            for (var i = 0; i < _items.Count; i++)
-            {
-                if (_items[i] is TaskRowModel row && row.Id == id)
-                {
-                    index = i;
-                    break;
-                }
-            }
-
+            var (repeater, index) = Find(_items, Repeater, id) is { Index: >= 0 } open ? open : Find(_history, HistoryRepeater, id);
             if (index < 0) return;
-            var element = Repeater.GetOrCreateElement(index);
+            var element = repeater.GetOrCreateElement(index);
             element.UpdateLayout();
             element.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = true });
         });
+    }
+
+    private static (ItemsRepeater Repeater, int Index) Find(ObservableCollection<object> items, ItemsRepeater repeater, Guid id)
+    {
+        for (var i = 0; i < items.Count; i++)
+        {
+            if (items[i] is TaskRowModel row && row.Id == id) return (repeater, i);
+        }
+
+        return (repeater, -1);
     }
 
     private void BringComposerIntoView()

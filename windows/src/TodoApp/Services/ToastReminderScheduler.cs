@@ -34,6 +34,23 @@ public sealed class ToastReminderScheduler : IReminderScheduler
 
     public event EventHandler<Guid>? OpenTaskRequested;
 
+    /// <summary>Notifications turned off for the app or for the user, or by policy. A failure to ask counts as allowed.</summary>
+    public bool AreNotificationsBlocked
+    {
+        get
+        {
+            try
+            {
+                return ToastNotificationManagerCompat.CreateToastNotifier().Setting != NotificationSetting.Enabled;
+            }
+            catch (Exception ex) when (ex is COMException or InvalidOperationException)
+            {
+                AppLog.Error("Couldn't read the notification setting", ex);
+                return false;
+            }
+        }
+    }
+
     /// <summary>Clears reminders left from a previous run; <see cref="Sync"/> schedules the current ones.</summary>
     public void Activate()
     {

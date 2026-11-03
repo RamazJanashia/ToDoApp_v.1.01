@@ -80,6 +80,8 @@ public sealed partial class BoardCard : UserControl
         VisualStateManager.GoToState(this, model.IsCompleted || model.IsUntitled ? "TitleDimmed" : "TitleNormal", false);
         Check.IsDone = model.IsCompleted;
         Meta.Show(model.Meta);
+        SubtaskProgress.Visibility = model.Progress is null ? Visibility.Collapsed : Visibility.Visible;
+        SubtaskProgress.Fraction = model.Progress ?? 0;
         Flag.Show(model.Priority, dimmed: model.IsCompleted);
         AutomationProperties.SetName(this, model.Title);
         DropLine.Opacity = 0;
@@ -97,7 +99,7 @@ public sealed partial class BoardCard : UserControl
         var selected = _model?.IsSelected == true;
         VisualStateManager.GoToState(this, selected ? "CardSelected" : _hovering ? "CardHover" : "CardNormal", false);
         DetailsButton.Visibility = _hovering ? Visibility.Visible : Visibility.Collapsed;
-        Flag.Visibility = _hovering ? Visibility.Collapsed : Visibility.Visible;
+        Flag.Visibility = !_hovering && _model?.ShowsPriority != false ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void OnDragStarting(UIElement sender, DragStartingEventArgs args)

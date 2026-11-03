@@ -28,7 +28,8 @@ public sealed partial class SubtasksSection : UserControl
         };
     }
 
-    public void Render(AppState state, Guid taskId, IReadOnlyList<Subtask> subtasks, string? progress)
+    /// <param name="fraction">The task's progress, drawn as a line above the subtasks.</param>
+    public void Render(AppState state, Guid taskId, IReadOnlyList<Subtask> subtasks, string? progress, double fraction)
     {
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(subtasks);
@@ -43,6 +44,8 @@ public sealed partial class SubtasksSection : UserControl
 
         Progress.Text = progress ?? "";
         Progress.Visibility = progress is null ? Visibility.Collapsed : Visibility.Visible;
+        Fraction.Fraction = fraction;
+        Fraction.Visibility = subtasks.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
 
         var ids = subtasks.Select(s => s.Id).ToHashSet();
         foreach (var gone in _rows.Keys.Where(id => !ids.Contains(id)).ToList())

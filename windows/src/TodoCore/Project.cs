@@ -11,6 +11,9 @@ public sealed record Project
 
     public ProjectColor Color { get; init; } = ProjectColor.Blue;
 
+    /// <summary>The project this one sits under; null for a top-level project.</summary>
+    public Guid? ParentId { get; init; }
+
     /// <summary>Symbols offered in the project editor.</summary>
     public static IReadOnlyList<string> IconChoices { get; } = new[]
     {

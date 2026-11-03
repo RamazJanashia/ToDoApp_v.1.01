@@ -4,18 +4,24 @@ namespace TodoCore;
 
 public enum TaskScopeKind
 {
-    Inbox,
+    /// <summary>Open tasks from everywhere, plus what was finished today.</summary>
+    AllOpen,
     Today,
     Upcoming,
     Completed,
     All,
-    Project,
+
+    /// <summary>A project together with its sub-projects.</summary>
+    Projects,
 }
 
-/// <summary>Which slice of the workspace a list shows.</summary>
-public readonly record struct TaskScope(TaskScopeKind Kind, Guid? ProjectId = null)
+/// <summary>
+/// Which slice of the workspace a list shows. <see cref="ProjectIds"/> is set only for
+/// <see cref="TaskScopeKind.Projects"/>; compare scopes by <see cref="Kind"/>, since the set compares by reference.
+/// </summary>
+public readonly record struct TaskScope(TaskScopeKind Kind, IReadOnlySet<Guid>? ProjectIds = null)
 {
-    public static TaskScope Inbox => new(TaskScopeKind.Inbox);
+    public static TaskScope AllOpen => new(TaskScopeKind.AllOpen);
 
     public static TaskScope Today => new(TaskScopeKind.Today);
 
@@ -25,7 +31,10 @@ public readonly record struct TaskScope(TaskScopeKind Kind, Guid? ProjectId = nu
 
     public static TaskScope All => new(TaskScopeKind.All);
 
-    public static TaskScope Project(Guid id) => new(TaskScopeKind.Project, id);
+    public static TaskScope Projects(IEnumerable<Guid> ids) => new(TaskScopeKind.Projects, ids.ToHashSet());
+
+    /// <summary>One project on its own.</summary>
+    public static TaskScope Project(Guid id) => Projects(new[] { id });
 }
 
 public enum TaskSort
@@ -50,12 +59,14 @@ public static class TaskSorts
     };
 }
 
+/// <param name="IncludesCompletedHistory">In a project scope, also bring in tasks finished on earlier days.</param>
 public sealed record TaskQuery(
     TaskScope Scope,
     string SearchText = "",
     IReadOnlySet<Priority>? Priorities = null,
     bool ShowCompleted = true,
-    TaskSort Sort = TaskSort.Manual)
+    TaskSort Sort = TaskSort.Manual,
+    bool IncludesCompletedHistory = false)
 {
     private const CompareOptions SearchOptions = CompareOptions.IgnoreCase | CompareOptions.IgnoreNonSpace;
     private const CompareOptions TitleOptions = CompareOptions.IgnoreCase | CompareOptions.NumericOrdering;
@@ -67,10 +78,11 @@ public sealed record TaskQuery(
 
         var tokens = (SearchText ?? "").Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
         var scope = Scope;
+        var bounds = new DayBounds(now, calendar);
 
         var matching = tasks.Where(task =>
         {
-            if (!Belongs(task, scope, now, calendar)) return false;
+            if (!Belongs(task, scope, bounds) && !IsCompletedHistory(task, scope)) return false;
             if (task.IsCompleted && !ShowCompleted && scope.Kind != TaskScopeKind.Completed) return false;
             if (Priorities is { Count: > 0 } && !Priorities.Contains(task.Priority)) return false;
             if (tokens.Length > 0)
@@ -96,20 +108,46 @@ public sealed record TaskQuery(
         return matching.OrderBy(t => t, comparer).ToList();
     }
 
-    /// <summary>Incomplete tasks in a scope, for sidebar counters.</summary>
-    public static int OpenCount(TaskScope scope, IReadOnlyList<TaskItem> tasks, DateTime now, TodoCalendar calendar) =>
-        tasks.Count(task => !task.IsCompleted && Belongs(task, scope, now, calendar));
+    private bool IsCompletedHistory(TaskItem task, TaskScope scope) =>
+        IncludesCompletedHistory
+        && task.IsCompleted
+        && scope.Kind == TaskScopeKind.Projects
+        && task.ProjectId is { } projectId
+        && scope.ProjectIds?.Contains(projectId) == true;
 
-    public static bool Belongs(TaskItem task, TaskScope scope, DateTime now, TodoCalendar calendar)
+    /// <summary>Incomplete tasks in a scope, for sidebar counters.</summary>
+    public static int OpenCount(TaskScope scope, IReadOnlyList<TaskItem> tasks, DateTime now, TodoCalendar calendar)
     {
-        var startOfToday = calendar.StartOfDay(now);
-        var startOfTomorrow = calendar.AddDays(startOfToday, 1);
-        var finishedToday = task.CompletedAt is { } completed && calendar.IsSameDay(completed, now);
+        var bounds = new DayBounds(now, calendar);
+        return tasks.Count(task => !task.IsCompleted && Belongs(task, scope, bounds));
+    }
+
+    public static bool Belongs(TaskItem task, TaskScope scope, DateTime now, TodoCalendar calendar) =>
+        Belongs(task, scope, new DayBounds(now, calendar));
+
+    /// <summary>Worked out once per pass: calendar arithmetic is the expensive part of running over many tasks.</summary>
+    private readonly struct DayBounds
+    {
+        public DayBounds(DateTime now, TodoCalendar calendar)
+        {
+            StartOfToday = calendar.StartOfDay(now);
+            StartOfTomorrow = calendar.AddDays(StartOfToday, 1);
+        }
+
+        public DateTime StartOfToday { get; }
+
+        public DateTime StartOfTomorrow { get; }
+    }
+
+    private static bool Belongs(TaskItem task, TaskScope scope, DayBounds bounds)
+    {
+        var startOfTomorrow = bounds.StartOfTomorrow;
+        var finishedToday = task.CompletedAt is { } completed && completed >= bounds.StartOfToday && completed < startOfTomorrow;
 
         switch (scope.Kind)
         {
-            case TaskScopeKind.Inbox:
-                return task.ProjectId is null && (!task.IsCompleted || finishedToday);
+            case TaskScopeKind.AllOpen:
+                return !task.IsCompleted || finishedToday;
             case TaskScopeKind.Today:
                 if (task.DueDate is not { } todayDue || todayDue >= startOfTomorrow) return false;
                 return !task.IsCompleted || finishedToday;
@@ -120,8 +158,9 @@ public sealed record TaskQuery(
                 return task.IsCompleted;
             case TaskScopeKind.All:
                 return true;
-            case TaskScopeKind.Project:
-                return task.ProjectId == scope.ProjectId && (!task.IsCompleted || finishedToday);
+            case TaskScopeKind.Projects:
+                if (task.ProjectId is not { } projectId || scope.ProjectIds?.Contains(projectId) != true) return false;
+                return !task.IsCompleted || finishedToday;
             default:
                 throw new ArgumentOutOfRangeException(nameof(scope), scope, null);
         }
@@ -148,6 +187,8 @@ public sealed record TaskQuery(
             default: return 0;
         }
     }
+
+    internal static bool Precedes(TaskItem lhs, TaskItem rhs, TaskSort sort) => Compare(lhs, rhs, sort) < 0;
 
     private static int Compare(TaskItem lhs, TaskItem rhs, TaskSort sort)
     {
@@ -177,7 +218,14 @@ public sealed record TaskQuery(
 }
 
 /// <summary>A titled run of tasks in a list, e.g. "Overdue" or one day in Upcoming.</summary>
-public sealed record TaskSection(string Id, string? Title, string? Detail, bool IsWarning, IReadOnlyList<TaskItem> Tasks)
+/// <param name="IsCompletedHistory">One day's finished tasks below a project's open ones.</param>
+public sealed record TaskSection(
+    string Id,
+    string? Title,
+    string? Detail,
+    bool IsWarning,
+    IReadOnlyList<TaskItem> Tasks,
+    bool IsCompletedHistory = false)
 {
     /// <summary>Splits an already sorted list into sections appropriate for the scope.</summary>
     public static IReadOnlyList<TaskSection> Make(TaskScope scope, IReadOnlyList<TaskItem> tasks, DateTime now, TodoCalendar calendar)
@@ -202,6 +250,24 @@ public sealed record TaskSection(string Id, string? Title, string? Detail, bool 
                 return Grouped(tasks, t => t.DueDate, ascending: true, now, calendar);
             case TaskScopeKind.Completed:
                 return Grouped(tasks, t => t.CompletedAt, ascending: false, now, calendar);
+            case TaskScopeKind.Projects:
+            {
+                var open = tasks.Where(t => !t.IsCompleted).ToList();
+                var finished = tasks
+                    .Where(t => t.IsCompleted)
+                    .OrderByDescending(t => t.CompletedAt ?? DateTime.MinValue)
+                    .ToList();
+                if (finished.Count == 0) return new[] { Flat(tasks) };
+                var history = Grouped(finished, t => t.CompletedAt, ascending: false, now, calendar)
+                    .Select(day => new TaskSection(
+                        "completed-" + day.Id,
+                        "Completed · " + (day.Title ?? ""),
+                        day.Detail,
+                        false,
+                        day.Tasks,
+                        IsCompletedHistory: true));
+                return (open.Count == 0 ? Enumerable.Empty<TaskSection>() : new[] { Flat(open) }).Concat(history).ToList();
+            }
             default:
                 return new[] { Flat(tasks) };
         }
@@ -266,6 +332,16 @@ public static class DueDateText
         return calendar.IsSameYear(date, now)
             ? local.ToString("MMM d", CultureInfo.CurrentCulture)
             : local.ToString("MMM d, yyyy", CultureInfo.CurrentCulture);
+    }
+
+    /// <summary>The coming Monday (or the locale's first weekday, where that isn't Sunday).</summary>
+    public static DateTime NextWeek(DateTime now, TodoCalendar calendar)
+    {
+        ArgumentNullException.ThrowIfNull(calendar);
+        var today = calendar.StartOfDay(now);
+        var target = calendar.FirstWeekday == 1 ? 2 : calendar.FirstWeekday;
+        var ahead = (target - calendar.Weekday(today) + 7) % 7;
+        return calendar.AddDays(today, ahead == 0 ? 7 : ahead);
     }
 
     public static int DayDifference(DateTime start, DateTime end, TodoCalendar calendar) =>

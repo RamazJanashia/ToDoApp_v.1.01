@@ -36,7 +36,7 @@ public sealed class BoardModelTests : IDisposable
         var b = _f.Store.CreateTask("B", status: TaskStatus.InProgress);
         var c = _f.Store.CreateTask("C", status: TaskStatus.Done);
         var d = _f.Store.CreateTask("D");
-        _f.State.Select(SidebarItem.Inbox);
+        _f.State.Select(SidebarItem.AllTasks);
         _f.State.SelectedTaskId = b.Id;
 
         var model = BoardModel.Build(_f.State);

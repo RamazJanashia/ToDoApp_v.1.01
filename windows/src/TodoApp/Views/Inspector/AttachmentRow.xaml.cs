@@ -49,7 +49,8 @@ public sealed partial class AttachmentRow : UserControl
         Menu.Opening += (_, _) =>
         {
             var isFile = _attachment?.Kind == AttachmentKind.File;
-            RevealItem.Visibility = isFile ? Visibility.Visible : Visibility.Collapsed;
+            // Only a file whose stored copy is inside the attachments folder can be shown.
+            RevealItem.Visibility = isFile && _path is not null ? Visibility.Visible : Visibility.Collapsed;
             CopyItem.Visibility = isFile ? Visibility.Collapsed : Visibility.Visible;
         };
     }
@@ -71,6 +72,7 @@ public sealed partial class AttachmentRow : UserControl
 
         var tip = attachment.Kind == AttachmentKind.Link ? attachment.Location : "Open " + attachment.Name;
         ToolTipService.SetToolTip(Root, tip);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(Root, "Open " + attachment.Name);
 
         if (attachment.Kind == AttachmentKind.Link)
         {
@@ -90,7 +92,13 @@ public sealed partial class AttachmentRow : UserControl
 
     private async Task LoadFileDetailsAsync(Attachment attachment, string? path)
     {
-        if (path is null) return;
+        // A location outside the attachments folder (a hand-edited file) has no copy to describe.
+        if (path is null)
+        {
+            DetailText.Text = "File · missing";
+            return;
+        }
+
         var kind = await WindowsShell.FileTypeDescriptionAsync(path);
         var info = new FileInfo(path);
         var detail = info.Exists ? $"{kind} · {AttachmentStorage.FileSize(info.Length)}" : $"{kind} · missing";
@@ -103,9 +111,17 @@ public sealed partial class AttachmentRow : UserControl
 
     private void Open()
     {
-        if (_attachment is not { } attachment) return;
-        var target = attachment.Kind == AttachmentKind.Link ? attachment.Location : InsideStorage(_path);
-        if (target is not null) _ = WindowsShell.OpenAsync(target);
+        if (_attachment is not { } attachment || _state is not { } state) return;
+        // A link opens only as a web or mail address, never as a local file or program (the data file can be edited
+        // by hand); a file only from inside the attachments folder.
+        if (attachment.Kind == AttachmentKind.Link)
+        {
+            if (state.Store.Attachments.OpenTarget(attachment) is { } address) WindowsShell.OpenLink(address);
+        }
+        else if (InsideStorage(state.Store.Attachments.OpenTarget(attachment)) is { } file)
+        {
+            WindowsShell.OpenFile(file);
+        }
     }
 
     /// <summary>

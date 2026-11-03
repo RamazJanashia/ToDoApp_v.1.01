@@ -8,6 +8,12 @@ namespace TodoApp.State;
 
 public enum KeyCommand { Down, Up, Delete, Enter, Space, Escape }
 
+/// <summary>The shortcuts offered wherever a due date can be set.</summary>
+public enum QuickDue { Today, Tomorrow, NextWeek }
+
+/// <summary>Opens the project editor. A null <see cref="ProjectId"/> creates one, under <see cref="ParentId"/> when set.</summary>
+public sealed record ProjectEditorRequest(Guid? ProjectId, Guid? ParentId = null);
+
 /// <summary>
 /// What the window is showing and the user actions that span several views. Main-thread only.
 /// <see cref="Changed"/> is raised for any property change, any store change and <see cref="Tick"/>; compound
@@ -21,8 +27,9 @@ public sealed class AppState : ObservableObject
     private SidebarItem _sidebarSelection = SidebarItem.Today;
     private Guid? _selectedTaskId;
     private string _searchText = "";
-    private IReadOnlySet<Priority> _priorityFilter = new HashSet<Priority>();
-    private bool _isSidebarVisible = true;
+    private IReadOnlySet<Priority> _priorityFilter;
+    private readonly HashSet<WorkspaceElement> _hidden;
+    private readonly HashSet<Guid> _collapsed;
     private DateTime _calendarMonth;
     private DateTime? _calendarSelectedDay;
     private bool _isComposing;
@@ -48,10 +55,37 @@ public sealed class AppState : ObservableObject
             SidebarWidth = ClampWidth(settings.SidebarWidth, ColumnLayout.SidebarRange, new AppSettings().SidebarWidth),
             InspectorWidth = ClampWidth(settings.InspectorWidth, ColumnLayout.InspectorRange, new AppSettings().InspectorWidth),
         };
+        _priorityFilter = settings.PriorityFilter.Select(value => (Priority)value).ToHashSet();
+        _hidden = settings.HiddenElements
+            .Select(WorkspaceElements.Parse)
+            .Where(element => element is not null)
+            .Select(element => element!.Value)
+            .ToHashSet();
+        _collapsed = settings.CollapsedProjects.ToHashSet();
         _calendarMonth = clock.UtcNow;
-        _selectedTaskId = new TaskQuery(TaskScope.Today).Run(store.Tasks, store.Projects, clock.UtcNow, clock.Calendar)
-            .FirstOrDefault()?.Id;
-        Store.Changed += (_, _) => RaiseChanged();
+        RestoreWorkspace(settings);
+        Store.Changed += (_, _) =>
+        {
+            // Undo can take away the project on screen.
+            LeaveMissingProject();
+            RaiseChanged();
+        };
+    }
+
+    /// <summary>
+    /// Back to where the user left off, as far as that place and task still exist. Written straight into the fields:
+    /// what is being restored is already saved.
+    /// </summary>
+    private void RestoreWorkspace(AppSettings settings)
+    {
+        if (settings.SidebarSelection is { } key && SidebarItems.FromStorageKey(key) is { } saved)
+        {
+            _sidebarSelection = saved.Kind == SidebarKind.Project && Store.FindProject(saved.ProjectId) is null ? SidebarItem.Today : saved;
+        }
+
+        LeaveHiddenPlaces();
+        var visible = VisibleTasks;
+        _selectedTaskId = visible.Any(t => t.Id == settings.SelectedTask) ? settings.SelectedTask : visible.FirstOrDefault()?.Id;
     }
 
     public TaskStore Store { get; }
@@ -66,27 +100,37 @@ public sealed class AppState : ObservableObject
     /// <summary>The inspector should focus this task's title. Raised after <see cref="Changed"/>, so the inspector is showing it.</summary>
     public event EventHandler<Guid>? TitleFocusRequested;
 
-    /// <summary>Open the project editor; null creates a new project.</summary>
-    public event EventHandler<Guid?>? ProjectEditorRequested;
+    /// <summary>Open the project editor.</summary>
+    public event EventHandler<ProjectEditorRequest>? ProjectEditorRequested;
 
     /// <summary>Ask the user to confirm deleting this project.</summary>
     public event EventHandler<Project>? ProjectDeletionRequested;
 
     // Window state
 
+    /// <summary>Remembered between launches.</summary>
     public SidebarItem SidebarSelection
     {
         get => _sidebarSelection;
-        set => SetProperty(ref _sidebarSelection, value);
+        set
+        {
+            SetProperty(ref _sidebarSelection, value);
+            // Also when unchanged: a restored value lives in the field, not yet in what is saved.
+            Remember(_settings with { SidebarSelection = value.StorageKey() });
+        }
     }
 
-    /// <summary>Moving on from an untouched draft throws it away instead of leaving "Untitled" behind.</summary>
+    /// <summary>
+    /// Remembered between launches. Moving on from an untouched draft throws it away instead of leaving "Untitled"
+    /// behind.
+    /// </summary>
     public Guid? SelectedTaskId
     {
         get => _selectedTaskId;
         set => Batch(() =>
         {
             SetProperty(ref _selectedTaskId, value);
+            Remember(_settings with { SelectedTask = value });
             if (_draftTaskId is { } draft && draft != _selectedTaskId)
             {
                 _draftTaskId = null;
@@ -109,13 +153,14 @@ public sealed class AppState : ObservableObject
             var copy = (value ?? new HashSet<Priority>()).ToHashSet();
             if (_priorityFilter.SetEquals(copy)) return;
             SetProperty(ref _priorityFilter, copy);
+            Remember(_settings with { PriorityFilter = new ValueList<int>(copy.Select(p => (int)p).Order()) });
         }
     }
 
     public bool IsSidebarVisible
     {
-        get => _isSidebarVisible;
-        set => SetProperty(ref _isSidebarVisible, value);
+        get => _settings.SidebarVisible;
+        set => Persist(_settings with { SidebarVisible = value });
     }
 
     public DateTime CalendarMonth
@@ -202,21 +247,27 @@ public sealed class AppState : ObservableObject
             if (IsSearching) return TaskScope.All;
             return SidebarSelection.Kind switch
             {
-                SidebarKind.Inbox => TaskScope.Inbox,
+                SidebarKind.AllTasks => TaskScope.AllOpen,
                 SidebarKind.Today => TaskScope.Today,
                 SidebarKind.Upcoming => TaskScope.Upcoming,
                 SidebarKind.Completed => TaskScope.Completed,
                 SidebarKind.Dashboard => TaskScope.All,
-                SidebarKind.Project => TaskScope.Project(SidebarSelection.ProjectId!.Value),
+                // A project together with its sub-projects.
+                SidebarKind.Project => TaskScope.Projects(Store.Projects.SubtreeIds(SidebarSelection.ProjectId!.Value)),
                 _ => throw new InvalidOperationException(),
             };
         }
     }
 
-    public TaskQuery Query => new(Scope, SearchText, PriorityFilter, ShowCompleted || IsSearching, Sort);
+    /// <summary>The list view also shows a project's tasks finished on earlier days.</summary>
+    public TaskQuery Query =>
+        new(Scope, SearchText, PriorityFilter, ShowCompleted || IsSearching, Sort, IncludesCompletedHistory: ViewMode == ViewMode.List);
 
     /// <summary>The tasks the center column lists, in display order.</summary>
     public IReadOnlyList<TaskItem> VisibleTasks => Run(Query);
+
+    /// <summary>What the header counts and measures: without a project's finished tasks from earlier days.</summary>
+    public IReadOnlyList<TaskItem> CurrentTasks => Run(Query with { IncludesCompletedHistory = false });
 
     /// <summary>Tasks in the order they appear on screen, for the arrow keys and for choosing what to select after a delete.</summary>
     public IReadOnlyList<TaskItem> NavigationOrder
@@ -247,7 +298,7 @@ public sealed class AppState : ObservableObject
         get
         {
             var query = Query;
-            if (query.Scope.Kind != TaskScopeKind.Project) query = query with { Scope = TaskScope.All };
+            if (query.Scope.Kind != TaskScopeKind.Projects) query = query with { Scope = TaskScope.All };
             query = query with { ShowCompleted = ShowCompleted };
             return Run(query).Where(t => t.DueDate is not null).ToList();
         }
@@ -260,7 +311,7 @@ public sealed class AppState : ObservableObject
             if (IsSearching) return "Search";
             return SidebarSelection.Kind switch
             {
-                SidebarKind.Inbox => "Inbox",
+                SidebarKind.AllTasks => "All Tasks",
                 SidebarKind.Today => "Today",
                 SidebarKind.Upcoming => "Upcoming",
                 SidebarKind.Completed => "Completed",
@@ -274,6 +325,80 @@ public sealed class AppState : ObservableObject
     public string WindowTitle => $"Tasks — {Title}";
 
     public TaskItem? SelectedTask => Store.FindTask(SelectedTaskId);
+
+    // Customising
+
+    /// <summary>Settings asked for, from a Customize button or menu item.</summary>
+    public event EventHandler? SettingsRequested;
+
+    public IReadOnlySet<WorkspaceElement> HiddenElements => _hidden;
+
+    /// <summary>Projects whose sub-projects are folded away in the sidebar.</summary>
+    public IReadOnlySet<Guid> CollapsedProjects => _collapsed;
+
+    public bool Shows(WorkspaceElement element) => !_hidden.Contains(element);
+
+    public IReadOnlyList<ViewMode> VisibleViewModes => Enum.GetValues<ViewMode>().Where(mode => Shows(mode.Element())).ToList();
+
+    /// <summary>The one view left can't be switched off: the window would have nothing to show.</summary>
+    public bool CanHide(WorkspaceElement element) =>
+        element.Group() != WorkspaceGroup.Views || !Shows(element) || VisibleViewModes.Count > 1;
+
+    public void SetVisible(bool visible, WorkspaceElement element) => Batch(() =>
+    {
+        if (!visible && !CanHide(element)) return;
+        if (!(visible ? _hidden.Remove(element) : _hidden.Add(element))) return;
+        RememberHidden();
+        LeaveHiddenPlaces();
+    });
+
+    public void ShowEverything() => Batch(() =>
+    {
+        if (_hidden.Count == 0) return;
+        _hidden.Clear();
+        RememberHidden();
+    });
+
+    public void ToggleCollapsed(Guid projectId)
+    {
+        if (!_collapsed.Remove(projectId)) _collapsed.Add(projectId);
+        Remember(_settings with { CollapsedProjects = new ValueList<Guid>(_collapsed) });
+        RaiseChanged();
+    }
+
+    public void OpenSettings() => SettingsRequested?.Invoke(this, EventArgs.Empty);
+
+    /// <summary>Where new tasks go from a place that can't list them, such as the Dashboard.</summary>
+    public SidebarItem HomeForNewTasks =>
+        Shows(WorkspaceElement.AllTasks) || !Shows(WorkspaceElement.Today) ? SidebarItem.AllTasks : SidebarItem.Today;
+
+    /// <summary>For shortcuts into a place, such as a dashboard tile: a place that's been hidden stays hidden.</summary>
+    public void SelectIfShown(SidebarItem item)
+    {
+        if (Shows(item.Element())) Select(item);
+    }
+
+    private void RememberHidden()
+    {
+        var names = Enum.GetValues<WorkspaceElement>().Where(_hidden.Contains).Select(WorkspaceElements.RawValue);
+        Remember(_settings with { HiddenElements = new ValueList<string>(names) });
+        RaiseChanged();
+    }
+
+    /// <summary>Steps off a view or sidebar place that has just been hidden.</summary>
+    private void LeaveHiddenPlaces()
+    {
+        if (!Shows(ViewMode.Element()) && VisibleViewModes is { Count: > 0 } modes) ViewMode = modes[0];
+        if (Shows(SidebarSelection.Element())) return;
+        foreach (var place in new[] { SidebarItem.Today, SidebarItem.AllTasks, SidebarItem.Upcoming, SidebarItem.Completed, SidebarItem.Dashboard })
+        {
+            if (!Shows(place.Element())) continue;
+            Select(place);
+            return;
+        }
+
+        if (Shows(WorkspaceElement.Projects) && Store.Projects.Outline() is { Count: > 0 } outline) Select(SidebarItem.Project(outline[0].Id));
+    }
 
     // Navigation
 
@@ -292,21 +417,17 @@ public sealed class AppState : ObservableObject
     {
         if (Store.FindTask(id) is not { } task) return;
         SearchText = "";
-        var now = Clock.UtcNow;
-        var belongsToday = TaskQuery.Belongs(task, TaskScope.Today, now, Clock.Calendar);
-        if (task.ProjectId is { } projectId && !belongsToday)
+        // Best place first, skipping any the user has hidden.
+        var places = new List<SidebarItem>();
+        if (TaskQuery.Belongs(task, TaskScope.Today, Clock.UtcNow, Clock.Calendar)) places.Add(SidebarItem.Today);
+        if (task.ProjectId is { } projectId && Store.FindProject(projectId) is not null) places.Add(SidebarItem.Project(projectId));
+        places.Add(task.IsCompleted ? SidebarItem.Completed : (task.DueDate is null ? SidebarItem.AllTasks : SidebarItem.Upcoming));
+        if (!task.IsCompleted) places.Add(SidebarItem.AllTasks);
+        foreach (var place in places)
         {
-            SidebarSelection = SidebarItem.Project(projectId);
-        }
-        else if (belongsToday)
-        {
-            SidebarSelection = SidebarItem.Today;
-        }
-        else
-        {
-            SidebarSelection = task.IsCompleted
-                ? SidebarItem.Completed
-                : (task.DueDate is null ? SidebarItem.Inbox : SidebarItem.Upcoming);
+            if (!Shows(place.Element())) continue;
+            SidebarSelection = place;
+            break;
         }
 
         SelectedTaskId = id;
@@ -340,7 +461,7 @@ public sealed class AppState : ObservableObject
         SearchText = "";
         if (SidebarSelection == SidebarItem.Dashboard || SidebarSelection == SidebarItem.Completed)
         {
-            SidebarSelection = SidebarItem.Inbox;
+            SidebarSelection = HomeForNewTasks;
         }
 
         if (ViewMode == ViewMode.List) IsComposing = true;
@@ -443,38 +564,58 @@ public sealed class AppState : ObservableObject
     public void Move(IEnumerable<Guid> ids, Guid? projectId) =>
         Store.UpdateTasks(ids, "Move to Project", t => t with { ProjectId = projectId });
 
-    /// <summary>The Task menu's Due Date items: today plus <paramref name="days"/>.</summary>
-    public void SetDueOffset(int days, Guid id)
+    /// <summary>"Next week" is the coming Monday, or the first weekday of the week where that isn't Sunday.</summary>
+    public DateTime DayFor(QuickDue due)
     {
         var calendar = Clock.Calendar;
         var today = calendar.StartOfDay(Clock.UtcNow);
-        SetDueDay(calendar.AddDays(today, days), new[] { id });
+        return due switch
+        {
+            QuickDue.Today => today,
+            QuickDue.Tomorrow => calendar.AddDays(today, 1),
+            QuickDue.NextWeek => DueDateText.NextWeek(Clock.UtcNow, calendar),
+            _ => throw new ArgumentOutOfRangeException(nameof(due), due, null),
+        };
     }
 
-    /// <summary>The popover's "Next week": the coming Monday, or the first weekday of the week if that isn't Sunday.</summary>
-    public DateTime NextWeekStart()
-    {
-        var calendar = Clock.Calendar;
-        var today = calendar.StartOfDay(Clock.UtcNow);
-        var target = calendar.FirstWeekday == 1 ? 2 : calendar.FirstWeekday;
-        var ahead = (target - calendar.Weekday(today) + 7) % 7;
-        return calendar.AddDays(today, ahead == 0 ? 7 : ahead);
-    }
+    public void SetDue(QuickDue due, IEnumerable<Guid> ids) => SetDueDay(DayFor(due), ids);
 
     // Projects
 
-    public void RequestProjectEditor(Guid? projectId) => ProjectEditorRequested?.Invoke(this, projectId);
+    public void RequestProjectEditor(Guid? projectId, Guid? parentId = null) =>
+        ProjectEditorRequested?.Invoke(this, new ProjectEditorRequest(projectId, parentId));
+
+    /// <summary>What the deletion dialog says will happen to the project's contents.</summary>
+    public string ProjectDeletionMessage(Project project)
+    {
+        ArgumentNullException.ThrowIfNull(project);
+        var what = Store.FindProject(project.ParentId) is { } parent
+            ? $"Its tasks and sub-projects will move to “{parent.Name}”."
+            : "Its tasks will stay in All Tasks without a project, and its sub-projects will move to the top level.";
+        return what + " You can undo this with Ctrl+Z.";
+    }
 
     public void RequestProjectDeletion(Guid projectId)
     {
         if (Store.FindProject(projectId) is { } project) ProjectDeletionRequested?.Invoke(this, project);
     }
 
+    /// <summary>Deletes a project. If it's open, moves on to its parent, or to the general list.</summary>
     public void DeleteProjectConfirmed(Guid projectId) => Batch(() =>
     {
-        if (SidebarSelection == SidebarItem.Project(projectId)) Select(SidebarItem.Inbox);
+        if (SidebarSelection == SidebarItem.Project(projectId))
+        {
+            var parent = Store.FindProject(projectId)?.ParentId;
+            Select(parent is { } id && Store.FindProject(id) is not null ? SidebarItem.Project(id) : HomeForNewTasks);
+        }
+
         Store.DeleteProject(projectId);
     });
+
+    private void LeaveMissingProject()
+    {
+        if (SidebarSelection.Kind == SidebarKind.Project && Store.FindProject(SidebarSelection.ProjectId) is null) Select(HomeForNewTasks);
+    }
 
     // Drag and drop
 
@@ -505,11 +646,10 @@ public sealed class AppState : ObservableObject
         var today = calendar.StartOfDay(Clock.UtcNow);
         switch (target.Kind)
         {
-            case SidebarKind.Inbox: Move(ids, null); break;
+            case SidebarKind.AllTasks or SidebarKind.Dashboard: return false;
             case SidebarKind.Today: SetDueDay(today, ids); break;
             case SidebarKind.Upcoming: SetDueDay(calendar.AddDays(today, 1), ids); break;
             case SidebarKind.Completed: Store.SetStatus(ids, TaskStatus.Done); break;
-            case SidebarKind.Dashboard: return false;
             case SidebarKind.Project: Move(ids, target.ProjectId); break;
         }
 
@@ -523,6 +663,13 @@ public sealed class AppState : ObservableObject
         ArgumentNullException.ThrowIfNull(ordered);
         var ids = TaskIds(items);
         if (ids.Count == 0 || ids[0] == targetId) return false;
+        Place(ids[0], targetId, ordered);
+        return true;
+    });
+
+    /// <summary>Placing a task by hand only means something in manual order, so that's what it switches to.</summary>
+    private void Place(Guid id, Guid beforeId, IReadOnlyList<TaskItem> ordered)
+    {
         var ordering = ordered;
         if (Sort != TaskSort.Manual)
         {
@@ -530,9 +677,8 @@ public sealed class AppState : ObservableObject
             ordering = ordered.OrderBy(t => t.SortOrder).ToList();
         }
 
-        Store.MoveTask(ids[0], targetId, ordering);
-        return true;
-    });
+        Store.MoveTask(id, beforeId, ordering);
+    }
 
     /// <summary>Cards dropped on a board column (optionally in front of a card).</summary>
     public bool HandleDropOnStatus(
@@ -545,7 +691,7 @@ public sealed class AppState : ObservableObject
         var ids = TaskIds(items);
         if (ids.Count == 0) return false;
         Store.SetStatus(ids, status);
-        if (beforeId is { } before) Store.MoveTask(ids[0], before, ordered ?? Array.Empty<TaskItem>());
+        if (beforeId is { } before) Place(ids[0], before, ordered ?? Array.Empty<TaskItem>());
         return true;
     });
 
@@ -602,9 +748,14 @@ public sealed class AppState : ObservableObject
 
     /// <summary>
     /// "Today", overdue colouring and counts are worked out when views draw, so the shell calls this when the
-    /// day changes, after sleep, and once a minute for tasks with a time of day.
+    /// day changes, after sleep, and once a minute for tasks with a time of day. Reminders past the limit come
+    /// into range as earlier ones fire, so they are scheduled again too.
     /// </summary>
-    public void Tick() => RaiseChanged();
+    public void Tick()
+    {
+        Store.ResyncReminders();
+        RaiseChanged();
+    }
 
     // Plumbing
 
@@ -623,6 +774,14 @@ public sealed class AppState : ObservableObject
         _settings = updated;
         _saveSettings(updated);
         OnPropertyChanged(property);
+    }
+
+    /// <summary>Saves a value whose change has already been announced.</summary>
+    private void Remember(AppSettings updated)
+    {
+        if (updated == _settings) return;
+        _settings = updated;
+        _saveSettings(updated);
     }
 
     private static double ClampWidth(double value, (double Min, double Max) range, double fallback) =>

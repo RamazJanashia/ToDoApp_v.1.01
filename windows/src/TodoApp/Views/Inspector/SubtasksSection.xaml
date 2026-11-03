@@ -3,6 +3,7 @@
     x:Class="TodoApp.SubtasksSection"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:TodoApp"
     IsTabStop="False">
   <UserControl.Resources>
     <SolidColorBrush x:Key="TextControlBackground" Color="Transparent" />
@@ -27,9 +28,17 @@
           Visibility="Collapsed" />
     </Grid>
 
+    <!-- How far the subtasks have come; only when there are some. -->
+    <local:ProgressLine
+        x:Name="Fraction"
+        Margin="0,0,0,8"
+        Visibility="Collapsed"
+        TrackBrush="{ThemeResource TrackBrush}"
+        FillBrush="{ThemeResource GreenBrush}" />
+
     <StackPanel x:Name="Rows" />
 
-    <Grid Height="34" ColumnSpacing="12">
+    <Grid MinHeight="34" Padding="0,8" ColumnSpacing="12">
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="20" />
         <ColumnDefinition Width="*" />
@@ -39,7 +48,8 @@
           FontSize="12"
           Foreground="{ThemeResource TertiaryTextBrush}"
           HorizontalAlignment="Center"
-          VerticalAlignment="Center" />
+          VerticalAlignment="Top"
+          Height="17" />
       <TextBox
           x:Name="AddBox"
           Grid.Column="1"
@@ -48,12 +58,12 @@
           Foreground="{ThemeResource PrimaryTextBrush}"
           FontSize="14"
           AcceptsReturn="False"
-          TextWrapping="NoWrap"
+          TextWrapping="Wrap"
           BorderThickness="0"
           Background="Transparent"
           Padding="0"
           MinHeight="0"
-          VerticalAlignment="Center"
+          VerticalAlignment="Top"
           AutomationProperties.Name="Add subtask" />
     </Grid>
   </StackPanel>

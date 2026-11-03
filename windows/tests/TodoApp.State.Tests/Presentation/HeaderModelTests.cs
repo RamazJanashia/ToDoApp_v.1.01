@@ -69,7 +69,7 @@ public sealed class HeaderModelTests : IDisposable
         var a = _f.Store.CreateTask("A");
         _f.Store.CreateTask("B");
         _f.Store.CreateTask("C");
-        _f.State.Select(SidebarItem.Inbox);
+        _f.State.Select(SidebarItem.AllTasks);
 
         Assert.Equal("3 tasks", Header().Subtitle);
         Assert.Equal(0, Header().Progress);
@@ -128,7 +128,7 @@ public sealed class HeaderModelTests : IDisposable
     [Fact]
     public void EmptyList_HasNoProgress()
     {
-        _f.State.Select(SidebarItem.Inbox);
+        _f.State.Select(SidebarItem.AllTasks);
 
         var header = Header();
 
@@ -143,7 +143,7 @@ public sealed class HeaderModelTests : IDisposable
         var a = _f.Store.CreateTask("A");
         var b = _f.Store.CreateTask("B");
         _f.Store.ToggleCompleted(a.Id);
-        _f.State.Select(SidebarItem.Inbox);
+        _f.State.Select(SidebarItem.AllTasks);
 
         var header = HeaderModel.Build(_f.State, new[] { _f.Store.FindTask(a.Id)!, _f.Store.FindTask(b.Id)! });
 

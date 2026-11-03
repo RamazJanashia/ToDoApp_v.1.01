@@ -134,16 +134,28 @@ cd ToDoApp\windows
 | Ctrl+Shift+3 / 2 / 1 / 0 | Priority High / Medium / Low / None |
 | Ctrl+T / Ctrl+Shift+T | Due today / tomorrow |
 | Ctrl+1 / 2 / 3 | List / Board / Calendar |
-| Alt+1 … Alt+5 | Inbox, Today, Upcoming, Completed, Dashboard |
+| Alt+1 … Alt+5 | All Tasks, Today, Upcoming, Completed, Dashboard |
 | Ctrl+Shift+S / Ctrl+Shift+I | Show or hide the sidebar / task details |
 | Ctrl+Z / Ctrl+Y | Undo / redo |
 | Ctrl+, | Settings |
 
 The **…** button in the title bar opens the same commands as a menu.
 
-**Reminders** are Windows notifications, scheduled with Windows itself, so they appear even when TodoApp is closed. Clicking one opens the task.
+**Projects** can hold sub-projects, which fold away in the sidebar. A project lists and counts its sub-projects' tasks, and its list shows finished tasks below the open ones, one day at a time. Deleting a project moves its tasks and sub-projects up a level. **All Tasks** lists the open tasks from every project.
 
-**Where your data lives:** `%LOCALAPPDATA%\TodoApp\` holds `tasks.json`, `settings.json`, the `Attachments\` folder and `TodoApp.log`. To try the app without touching your own tasks, start it with `--data-dir <folder>` (or set `TODOAPP_DATA_DIR`).
+**Settings** can hide sidebar places, views, parts of task rows and details, dashboard sections and title-bar items; hiding something never changes your tasks. **Customize** at the foot of the sidebar always opens it. The app remembers the open place, the selected task, the filter, the sidebar and folded projects between launches.
+
+**Reminders** are Windows notifications, scheduled with Windows itself, so they appear even when TodoApp is closed. Clicking one opens the task. If notifications are turned off for TodoApp, setting a reminder says so.
+
+**Where your data lives:** everything is in one folder, `%LOCALAPPDATA%\TodoApp\`, so copying it backs up everything:
+
+- `tasks.json`, the tasks and projects, and `settings.json`.
+- `Backups\<date>\tasks.json`, your tasks as they stood when that day began. The newest 30 are kept.
+- `Attachments\<date>\`, copies of attached files.
+
+A stored file is removed only once nothing can need it: not `tasks.json`, not a backup, and not attached in the last 30 days. If `tasks.json` can't be read, it is set aside as `tasks.unreadable-<time>.json`, and while that file is there no attachments are cleaned up. A file saved by a newer version of the app is left in place, and changes aren't saved over it. Settings ▸ Show Data Folder opens the folder.
+
+To try the app without touching your own tasks or reminders, start it with `--data-dir <folder>` (or set `TODOAPP_DATA_DIR`); reminders stay off there.
 
 The code is in `windows/src/`: `TodoCore` (models, recurrence, queries, persistence; a port of the Swift module), `TodoApp.State` (the store, undo, autosave and what each view shows; no UI) and `TodoApp` (the WinUI shell). Tests are in `windows/tests/`.
 

@@ -75,6 +75,6 @@
         Opacity="0"
         VerticalAlignment="Center"
         ToolTipService.ToolTip="Remove Attachment"
-        AutomationProperties.Name="Remove attachment" />
+        AutomationProperties.Name="Remove Attachment" />
   </Grid>
 </UserControl>

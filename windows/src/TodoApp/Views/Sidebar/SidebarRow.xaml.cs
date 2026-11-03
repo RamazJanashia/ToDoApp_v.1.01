@@ -15,6 +15,7 @@ public sealed partial class SidebarRow : UserControl
     private const string ProjectPrefix = "project:";
 
     private readonly MenuFlyout _projectMenu = new();
+    private readonly MenuFlyout _placeMenu = new();
     private AppState? _state;
     private SidebarRowModel? _model;
     private bool _hovering;
@@ -23,6 +24,11 @@ public sealed partial class SidebarRow : UserControl
     {
         InitializeComponent();
 
+        var newSubproject = new MenuFlyoutItem { Text = "New Sub-project…" };
+        newSubproject.Click += (_, _) =>
+        {
+            if (_state is not null && _model?.Item.ProjectId is { } id) _state.RequestProjectEditor(null, id);
+        };
         var edit = new MenuFlyoutItem { Text = "Edit Project…" };
         edit.Click += (_, _) =>
         {
@@ -33,9 +39,30 @@ public sealed partial class SidebarRow : UserControl
         {
             if (_state is not null && _model?.Item.ProjectId is { } id) _state.RequestProjectDeletion(id);
         };
+        _projectMenu.Items.Add(newSubproject);
         _projectMenu.Items.Add(edit);
         _projectMenu.Items.Add(new MenuFlyoutSeparator());
         _projectMenu.Items.Add(delete);
+
+        // "Hide Today" and "Customize…", filled when it opens so the title is current.
+        _placeMenu.Opening += (_, _) =>
+        {
+            _placeMenu.Items.Clear();
+            if (_state is not { } state || _model is not { } model) return;
+            var hide = new MenuFlyoutItem { Text = "Hide " + model.Title };
+            hide.Click += (_, _) => state.SetVisible(false, model.Item.Element());
+            var customize = new MenuFlyoutItem { Text = "Customize…" };
+            customize.Click += (_, _) => state.OpenSettings();
+            _placeMenu.Items.Add(hide);
+            _placeMenu.Items.Add(customize);
+        };
+
+        ChevronButton.Click += (_, _) =>
+        {
+            if (_state is not null && _model?.Item.ProjectId is { } id) _state.ToggleCollapsed(id);
+        };
+        // The chevron folds the project away; it doesn't open it.
+        ChevronButton.Tapped += (_, e) => e.Handled = true;
 
         Chrome.Tapped += (_, _) =>
         {
@@ -65,9 +92,19 @@ public sealed partial class SidebarRow : UserControl
         CountText.Visibility = model.Count is null ? Visibility.Collapsed : Visibility.Visible;
         ApplyTint();
 
+        Body.Padding = new Thickness(10 + 16 * model.Depth, 0, 10, 0);
+        ChevronButton.Visibility = model.IsCollapsed is null ? Visibility.Collapsed : Visibility.Visible;
+        if (model.IsCollapsed is { } collapsed)
+        {
+            ChevronButton.Content = Glyphs.For(collapsed ? "chevron.right" : "chevron.down");
+            var tip = collapsed ? "Show Sub-projects" : "Hide Sub-projects";
+            ToolTipService.SetToolTip(ChevronButton, tip);
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(ChevronButton, tip);
+        }
+
         var isProject = model.Item.Kind == SidebarKind.Project;
         Chrome.CanDrag = isProject;
-        Chrome.ContextFlyout = isProject ? _projectMenu : null;
+        Chrome.ContextFlyout = isProject ? _projectMenu : _placeMenu;
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
             this,
             model.Count is { } count ? $"{model.Title}, {count}" : model.Title);
@@ -100,8 +137,8 @@ public sealed partial class SidebarRow : UserControl
 
     private void OnDragOver(object sender, DragEventArgs e)
     {
-        // The Dashboard takes no drops, so it shows no outline and refuses.
-        if (_model is null || _model.Item.Kind == SidebarKind.Dashboard || !e.DataView.Contains(StandardDataFormats.Text))
+        // All Tasks and the Dashboard take no drops, so they show no outline and refuse.
+        if (_model is not { AcceptsDrops: true } || !e.DataView.Contains(StandardDataFormats.Text))
         {
             VisualStateManager.GoToState(this, "NotTargeted", true);
             return;
@@ -118,7 +155,7 @@ public sealed partial class SidebarRow : UserControl
         VisualStateManager.GoToState(this, "NotTargeted", true);
         var state = _state;
         var model = _model;
-        if (state is null || model is null || model.Item.Kind == SidebarKind.Dashboard) return;
+        if (state is null || model is not { AcceptsDrops: true }) return;
         if (!e.DataView.Contains(StandardDataFormats.Text)) return;
 
         var deferral = e.GetDeferral();

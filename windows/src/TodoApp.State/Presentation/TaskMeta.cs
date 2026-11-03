@@ -19,6 +19,7 @@ public sealed record TaskMetaInfo(
         ProjectName is not null
         || DueText is not null
         || RepeatSummary is not null
+        || HasReminder
         || SubtaskProgress is not null
         || AttachmentCount > 0
         || ShowsNotesIcon;
@@ -26,14 +27,23 @@ public sealed record TaskMetaInfo(
 
 public static class TaskMeta
 {
-    public static TaskMetaInfo Build(TaskItem task, Project? project, bool hidesDueToday, DateTime now, TodoCalendar calendar)
+    /// <param name="hidden">What the user switched off in Settings; those parts are left out of the line.</param>
+    public static TaskMetaInfo Build(
+        TaskItem task,
+        Project? project,
+        bool hidesDueToday,
+        DateTime now,
+        TodoCalendar calendar,
+        IReadOnlySet<WorkspaceElement>? hidden = null)
     {
         ArgumentNullException.ThrowIfNull(task);
         ArgumentNullException.ThrowIfNull(calendar);
+        bool Shows(WorkspaceElement element) => hidden is null || !hidden.Contains(element);
+        if (!Shows(WorkspaceElement.RowProject)) project = null;
 
         string? dueText = null;
         var overdue = false;
-        if (task.DueDate is { } due)
+        if (task.DueDate is { } due && Shows(WorkspaceElement.RowDueDate))
         {
             if (hidesDueToday && calendar.IsSameDay(due, now))
             {
@@ -52,16 +62,16 @@ public static class TaskMeta
         }
 
         // The Mac shows the notes icon in place of everything else, so it goes by the label, not the date.
-        var showsNotes = task.Notes.Length > 0 && project is null && dueText is null;
+        var showsNotes = task.Notes.Length > 0 && project is null && dueText is null && Shows(WorkspaceElement.RowNotes);
 
         return new TaskMetaInfo(
             project?.Name,
             dueText,
             overdue,
-            task.Recurrence?.Summary,
-            task.ReminderOffset is not null && task.DueDate is not null,
-            SubtaskProgress(task),
-            task.Attachments.Count,
+            Shows(WorkspaceElement.RowRepeat) ? task.Recurrence?.Summary : null,
+            task.ReminderOffset is not null && task.DueDate is not null && Shows(WorkspaceElement.RowReminder),
+            Shows(WorkspaceElement.RowSubtasks) ? SubtaskProgress(task) : null,
+            Shows(WorkspaceElement.RowAttachments) ? task.Attachments.Count : 0,
             showsNotes);
     }
 
@@ -71,25 +81,23 @@ public static class TaskMeta
             ? null
             : string.Create(CultureInfo.CurrentCulture, $"{task.CompletedSubtaskCount}/{task.Subtasks.Count}");
 
-    internal static TaskRowModel Row(
-        TaskItem task,
-        TaskStore store,
-        Guid? selectedId,
-        bool hidesDueToday,
-        DateTime now,
-        TodoCalendar calendar) =>
+    internal static TaskRowModel Row(TaskItem task, AppState s, bool hidesDueToday, DateTime now, TodoCalendar calendar) =>
         new(
             task.Id,
-            task.Title.Length == 0 ? "Untitled" : task.Title,
+            task.DisplayTitle,
             task.Title.Length == 0,
             task.IsCompleted,
             task.Priority,
-            selectedId == task.Id,
-            Build(task, store.FindProject(task.ProjectId), hidesDueToday, now, calendar),
-            task);
+            s.SelectedTaskId == task.Id,
+            Build(task, s.Store.FindProject(task.ProjectId), hidesDueToday, now, calendar, s.HiddenElements),
+            task,
+            s.Shows(WorkspaceElement.RowProgress) && task.Subtasks.Count > 0 ? task.Progress : null,
+            s.Shows(WorkspaceElement.RowPriority));
 }
 
 /// <summary>One task in a list or on the board. <see cref="Title"/> is already "Untitled" for a blank title.</summary>
+/// <param name="Progress">How far the subtasks have come; null when there are none or the bar is switched off.</param>
+/// <param name="ShowsPriority">The priority flag is drawn.</param>
 public sealed record TaskRowModel(
     Guid Id,
     string Title,
@@ -98,7 +106,9 @@ public sealed record TaskRowModel(
     Priority Priority,
     bool IsSelected,
     TaskMetaInfo Meta,
-    TaskItem Task);
+    TaskItem Task,
+    double? Progress = null,
+    bool ShowsPriority = true);
 
 /// <summary>
 /// Theme token names the views map to brushes. Icon and dot colours in the models are one of:

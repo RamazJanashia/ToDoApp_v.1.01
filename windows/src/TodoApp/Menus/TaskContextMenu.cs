@@ -35,9 +35,9 @@ public static class TaskContextMenu
         items.Add(new MenuFlyoutSeparator());
 
         var due = new MenuFlyoutSubItem { Text = "Due Date" };
-        due.Items.Add(Item("Today", () => state.SetDueOffset(0, id)));
-        due.Items.Add(Item("Tomorrow", () => state.SetDueOffset(1, id)));
-        due.Items.Add(Item("Next Week", () => state.SetDueOffset(7, id)));
+        due.Items.Add(Item("Today", () => state.SetDue(QuickDue.Today, new[] { id })));
+        due.Items.Add(Item("Tomorrow", () => state.SetDue(QuickDue.Tomorrow, new[] { id })));
+        due.Items.Add(Item("Next Week", () => state.SetDue(QuickDue.NextWeek, new[] { id })));
         if (task.DueDate is not null)
         {
             due.Items.Add(new MenuFlyoutSeparator());
@@ -57,12 +57,12 @@ public static class TaskContextMenu
         items.Add(priority);
 
         var move = new MenuFlyoutSubItem { Text = "Move to" };
-        move.Items.Add(Item("Inbox", () => state.Move(ids, null)));
+        move.Items.Add(Item("No Project", () => state.Move(ids, null)));
         if (state.Store.Projects.Count > 0) move.Items.Add(new MenuFlyoutSeparator());
-        foreach (var project in state.Store.Projects)
+        foreach (var row in state.Store.Projects.Outline())
         {
-            var projectId = project.Id;
-            move.Items.Add(Item(project.Name, () => state.Move(ids, projectId)));
+            var projectId = row.Id;
+            move.Items.Add(Item(new string(' ', 4 * row.Depth) + row.Project.Name, () => state.Move(ids, projectId)));
         }
 
         items.Add(move);

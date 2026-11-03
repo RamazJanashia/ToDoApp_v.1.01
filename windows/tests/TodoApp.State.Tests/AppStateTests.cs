@@ -46,7 +46,7 @@ public sealed class AppStateTests : IDisposable
             y = Inbox(store, "Two");
             z = Inbox(store, "Three");
         });
-        state.Select(SidebarItem.Inbox);
+        state.Select(SidebarItem.AllTasks);
         (a, b, c) = (x, y, z);
         return state;
     }
@@ -92,9 +92,9 @@ public sealed class AppStateTests : IDisposable
         Assert.False(state.IsComposing);
         Assert.Equal(task.Id, state.SelectedTaskId);
 
-        state.Select(SidebarItem.Inbox);
+        state.Select(SidebarItem.Completed);
 
-        Assert.Equal(SidebarItem.Inbox, state.SidebarSelection);
+        Assert.Equal(SidebarItem.Completed, state.SidebarSelection);
         Assert.Null(state.SelectedTaskId);
     }
 
@@ -102,12 +102,12 @@ public sealed class AppStateTests : IDisposable
     public void Search_SwitchesScopeToAll_AndTitleToSearch()
     {
         var state = NewState();
-        state.Select(SidebarItem.Inbox);
+        state.Select(SidebarItem.AllTasks);
 
         state.SearchText = "   ";
         Assert.False(state.IsSearching);
-        Assert.Equal(TaskScope.Inbox, state.Scope);
-        Assert.Equal("Inbox", state.Title);
+        Assert.Equal(TaskScope.AllOpen, state.Scope);
+        Assert.Equal("All Tasks", state.Title);
 
         state.SearchText = "contract";
         Assert.True(state.IsSearching);
@@ -125,7 +125,7 @@ public sealed class AppStateTests : IDisposable
     {
         var state = NewState();
         state.ShowCompleted = false;
-        state.Select(SidebarItem.Inbox);
+        state.Select(SidebarItem.AllTasks);
         Assert.DoesNotContain(state.VisibleTasks, t => t.IsCompleted);
 
         state.SearchText = "invoices";
@@ -161,7 +161,7 @@ public sealed class AppStateTests : IDisposable
     public void BeginNewTask_InListOpensComposer_InBoardCreatesDraft()
     {
         var state = NewEmptyState();
-        state.Select(SidebarItem.Inbox);
+        state.Select(SidebarItem.AllTasks);
         state.SearchText = "zzz";
 
         state.BeginNewTask();
@@ -196,7 +196,7 @@ public sealed class AppStateTests : IDisposable
 
         state.BeginNewTask();
 
-        Assert.Equal(SidebarItem.Inbox, state.SidebarSelection);
+        Assert.Equal(SidebarItem.AllTasks, state.SidebarSelection);
         Assert.True(state.IsComposing);
     }
 
@@ -255,7 +255,7 @@ public sealed class AppStateTests : IDisposable
         var upcoming = state.CreateTask("b");
         Assert.Equal(D(2026, 10, 24), upcoming.DueDate);
 
-        state.Select(SidebarItem.Inbox);
+        state.Select(SidebarItem.AllTasks);
         var inbox = state.CreateTask("c");
         Assert.Null(inbox.DueDate);
         Assert.Null(inbox.ProjectId);
@@ -324,7 +324,7 @@ public sealed class AppStateTests : IDisposable
             late = store.CreateTask("Late", dueDate: D(2026, 11, 20));
             early = store.CreateTask("Early", dueDate: D(2026, 11, 2));
         });
-        state.Select(SidebarItem.Inbox);
+        state.Select(SidebarItem.AllTasks);
 
         state.ViewMode = ViewMode.Board;
         Assert.Equal(
@@ -421,7 +421,7 @@ public sealed class AppStateTests : IDisposable
         Check(projectToday, SidebarItem.Today);
         Check(today, SidebarItem.Today);
         Check(completed, SidebarItem.Completed);
-        Check(inbox, SidebarItem.Inbox);
+        Check(inbox, SidebarItem.AllTasks);
         Check(upcoming, SidebarItem.Upcoming);
 
         state.Select(SidebarItem.Today);
@@ -448,7 +448,7 @@ public sealed class AppStateTests : IDisposable
     }
 
     [Fact]
-    public void DropOnSidebar_UpcomingInboxAndProject_Refile()
+    public void DropOnSidebar_UpcomingAndProjectRefile_AllTasksRefuses()
     {
         Project project = null!;
         TaskItem task = null!;
@@ -461,11 +461,12 @@ public sealed class AppStateTests : IDisposable
         Assert.True(state.HandleDropOnSidebar(Payload(task.Id), SidebarItem.Upcoming));
         Assert.Equal(D(2026, 10, 24), state.Store.FindTask(task.Id)!.DueDate);
 
-        Assert.True(state.HandleDropOnSidebar(Payload(task.Id), SidebarItem.Inbox));
-        Assert.Null(state.Store.FindTask(task.Id)!.ProjectId);
-
-        Assert.True(state.HandleDropOnSidebar(Payload(task.Id), SidebarItem.Project(project.Id)));
+        Assert.False(state.HandleDropOnSidebar(Payload(task.Id), SidebarItem.AllTasks));
         Assert.Equal(project.Id, state.Store.FindTask(task.Id)!.ProjectId);
+
+        var other = state.Store.CreateProject("Home", "house", ProjectColor.Green);
+        Assert.True(state.HandleDropOnSidebar(Payload(task.Id), SidebarItem.Project(other.Id)));
+        Assert.Equal(other.Id, state.Store.FindTask(task.Id)!.ProjectId);
     }
 
     [Fact]
@@ -500,7 +501,7 @@ public sealed class AppStateTests : IDisposable
 
         Assert.False(state.HandleDropOnSidebar(new[] { "not a guid", "project:nope" }, SidebarItem.Today));
         Assert.False(state.HandleDropOnSidebar(Array.Empty<string>(), SidebarItem.Today));
-        Assert.False(state.HandleDropOnSidebar(new[] { "project:" + P(Guid.NewGuid()) }, SidebarItem.Inbox));
+        Assert.False(state.HandleDropOnSidebar(new[] { "project:" + P(Guid.NewGuid()) }, SidebarItem.AllTasks));
     }
 
     [Fact]
@@ -530,7 +531,7 @@ public sealed class AppStateTests : IDisposable
             alpha = store.CreateTask("Alpha");
             charlie = store.CreateTask("Charlie");
         });
-        state.Select(SidebarItem.Inbox);
+        state.Select(SidebarItem.AllTasks);
         state.Sort = TaskSort.Title;
         var ordered = state.VisibleTasks;
         Assert.Equal(new[] { "Alpha", "Bravo", "Charlie" }, ordered.Select(t => t.Title).ToArray());
@@ -773,18 +774,19 @@ public sealed class AppStateTests : IDisposable
     }
 
     [Fact]
-    public void SetDueOffset_IsTodayPlusDays()
+    public void SetDue_TodayTomorrowAndComingMonday()
     {
         var state = InboxState(out var a, out _, out _);
 
-        state.SetDueOffset(0, a.Id);
+        state.SetDue(QuickDue.Today, new[] { a.Id });
         Assert.Equal(D(2026, 10, 23), state.Store.FindTask(a.Id)!.DueDate);
 
-        state.SetDueOffset(1, a.Id);
+        state.SetDue(QuickDue.Tomorrow, new[] { a.Id });
         Assert.Equal(D(2026, 10, 24), state.Store.FindTask(a.Id)!.DueDate);
 
-        state.SetDueOffset(7, a.Id);
-        Assert.Equal(D(2026, 10, 30), state.Store.FindTask(a.Id)!.DueDate);
+        // Friday the 23rd: next week starts on Monday the 26th, not a week from today.
+        state.SetDue(QuickDue.NextWeek, new[] { a.Id });
+        Assert.Equal(D(2026, 10, 26), state.Store.FindTask(a.Id)!.DueDate);
     }
 
     [Fact]
@@ -797,24 +799,27 @@ public sealed class AppStateTests : IDisposable
             project = store.CreateProject("Work", "folder", ProjectColor.Blue);
             task = store.CreateTask("Filed", project.Id);
         });
-        var editor = new List<Guid?>();
+        var editor = new List<ProjectEditorRequest>();
         var deletion = new List<Project>();
-        state.ProjectEditorRequested += (_, id) => editor.Add(id);
+        state.ProjectEditorRequested += (_, request) => editor.Add(request);
         state.ProjectDeletionRequested += (_, p) => deletion.Add(p);
 
         state.RequestProjectEditor(null);
         state.RequestProjectEditor(project.Id);
+        state.RequestProjectEditor(null, project.Id);
         state.RequestProjectDeletion(project.Id);
         state.RequestProjectDeletion(Guid.NewGuid());
 
-        Assert.Equal(new Guid?[] { null, project.Id }, editor);
+        Assert.Equal(
+            new[] { new ProjectEditorRequest(null), new ProjectEditorRequest(project.Id), new ProjectEditorRequest(null, project.Id) },
+            editor);
         Assert.Equal(new[] { project }, deletion);
 
         state.Select(SidebarItem.Project(project.Id));
         state.DeleteProjectConfirmed(project.Id);
 
         Assert.Empty(state.Store.Projects);
-        Assert.Equal(SidebarItem.Inbox, state.SidebarSelection);
+        Assert.Equal(SidebarItem.AllTasks, state.SidebarSelection);
         Assert.Null(state.Store.FindTask(task.Id)!.ProjectId);
     }
 
@@ -930,29 +935,196 @@ public sealed class AppStateTests : IDisposable
     }
 
     [Fact]
-    public void NextWeekStart_IsComingMonday()
+    public void NextWeek_IsComingMonday()
     {
         // Friday 2026-10-23, Monday-first week.
         var state = NewState();
-        Assert.Equal(D(2026, 10, 26), state.NextWeekStart());
+        Assert.Equal(D(2026, 10, 26), state.DayFor(QuickDue.NextWeek));
 
         // On a Monday it is the Monday after.
         _clock.UtcNow = D(2026, 10, 26, 8);
-        Assert.Equal(D(2026, 11, 2), state.NextWeekStart());
+        Assert.Equal(D(2026, 11, 2), state.DayFor(QuickDue.NextWeek));
 
         // On a Sunday it is the next day.
         _clock.UtcNow = D(2026, 10, 25, 20);
-        Assert.Equal(D(2026, 10, 26), state.NextWeekStart());
+        Assert.Equal(D(2026, 10, 26), state.DayFor(QuickDue.NextWeek));
     }
 
     [Fact]
-    public void NextWeekStart_UsesTheFirstWeekdayUnlessSunday()
+    public void NextWeek_UsesTheFirstWeekdayUnlessSunday()
     {
         var sundayFirst = new SettableClock(new TodoCalendar(Berlin.TimeZone, DayOfWeek.Sunday), Now);
         var saturdayFirst = new SettableClock(new TodoCalendar(Berlin.TimeZone, DayOfWeek.Saturday), Now);
 
-        Assert.Equal(D(2026, 10, 26), StateWith(sundayFirst).NextWeekStart());
-        Assert.Equal(D(2026, 10, 24), StateWith(saturdayFirst).NextWeekStart());
+        Assert.Equal(D(2026, 10, 26), StateWith(sundayFirst).DayFor(QuickDue.NextWeek));
+        Assert.Equal(D(2026, 10, 24), StateWith(saturdayFirst).DayFor(QuickDue.NextWeek));
+    }
+
+    // Sub-projects and navigation
+
+    private AppState Nested(out Project parent, out Project child)
+    {
+        Project p = null!, c = null!;
+        var state = NewEmptyState(store =>
+        {
+            p = store.CreateProject("Work", "folder", ProjectColor.Blue);
+            c = store.CreateProject("Clients", "folder", ProjectColor.Blue, p.Id);
+        });
+        (parent, child) = (p, c);
+        return state;
+    }
+
+    [Fact]
+    public void ProjectScope_IncludesSubprojects()
+    {
+        var state = Nested(out var parent, out var child);
+        var task = state.Store.CreateTask("In child", child.Id);
+
+        state.Select(SidebarItem.Project(parent.Id));
+
+        Assert.Contains(state.VisibleTasks, t => t.Id == task.Id);
+    }
+
+    [Fact]
+    public void ListView_ShowsCompletedHistory_BoardDoesNot()
+    {
+        var state = Nested(out var parent, out _);
+        _clock.UtcNow = D(2026, 10, 15);
+        var old = state.Store.CreateTask("Done last week", parent.Id, status: TaskStatus.Done);
+        _clock.UtcNow = Now;
+        state.Select(SidebarItem.Project(parent.Id));
+
+        Assert.Contains(state.VisibleTasks, t => t.Id == old.Id);
+        Assert.DoesNotContain(state.CurrentTasks, t => t.Id == old.Id);
+
+        state.ViewMode = ViewMode.Board;
+        Assert.DoesNotContain(state.VisibleTasks, t => t.Id == old.Id);
+    }
+
+    [Fact]
+    public void CalendarTasks_ProjectIncludesSubprojects()
+    {
+        var state = Nested(out var parent, out var child);
+        var task = state.Store.CreateTask("Dated", child.Id, D(2026, 10, 28));
+        state.Select(SidebarItem.Project(parent.Id));
+
+        Assert.Contains(state.CalendarTasks, t => t.Id == task.Id);
+    }
+
+    [Fact]
+    public void Reveal_PrefersTodayThenProject()
+    {
+        var state = Nested(out var parent, out _);
+        var task = state.Store.CreateTask("Due today", parent.Id, D(2026, 10, 23));
+
+        state.Select(SidebarItem.Dashboard);
+        state.Reveal(task.Id);
+        Assert.Equal(SidebarItem.Today, state.SidebarSelection);
+
+        state.SetVisible(false, WorkspaceElement.Today);
+        state.Select(SidebarItem.Dashboard);
+        state.Reveal(task.Id);
+        Assert.Equal(SidebarItem.Project(parent.Id), state.SidebarSelection);
+    }
+
+    [Fact]
+    public void Reveal_NeverLandsOnHiddenPlace()
+    {
+        var state = NewEmptyState();
+        _clock.UtcNow = D(2026, 10, 1);
+        var done = state.Store.CreateTask("Old", status: TaskStatus.Done);
+        _clock.UtcNow = Now;
+        state.Select(SidebarItem.Upcoming);
+        state.SetVisible(false, WorkspaceElement.Completed);
+
+        state.Reveal(done.Id);
+
+        Assert.Equal(SidebarItem.Upcoming, state.SidebarSelection);
+        Assert.Equal(done.Id, state.SelectedTaskId);
+    }
+
+    [Fact]
+    public void BeginNewTask_FromDashboard_WithAllTasksHidden_GoesToToday()
+    {
+        var state = NewState();
+        state.SetVisible(false, WorkspaceElement.AllTasks);
+        state.Select(SidebarItem.Dashboard);
+
+        state.BeginNewTask();
+
+        Assert.Equal(SidebarItem.Today, state.SidebarSelection);
+    }
+
+    [Fact]
+    public void DeleteOpenSubproject_SelectsParent()
+    {
+        var state = Nested(out var parent, out var child);
+        state.Select(SidebarItem.Project(child.Id));
+
+        state.DeleteProjectConfirmed(child.Id);
+
+        Assert.Equal(SidebarItem.Project(parent.Id), state.SidebarSelection);
+    }
+
+    [Fact]
+    public void DeleteOpenTopLevelProject_WithAllTasksHidden_GoesToToday()
+    {
+        var state = Nested(out var parent, out _);
+        state.SetVisible(false, WorkspaceElement.AllTasks);
+        state.Select(SidebarItem.Project(parent.Id));
+
+        state.DeleteProjectConfirmed(parent.Id);
+
+        Assert.Equal(SidebarItem.Today, state.SidebarSelection);
+    }
+
+    [Fact]
+    public void UndoRemovingOpenProject_GoesHome()
+    {
+        var state = NewEmptyState();
+        var project = state.Store.CreateProject("New", "folder", ProjectColor.Blue);
+        state.Select(SidebarItem.Project(project.Id));
+
+        state.Store.Undo.Undo();
+
+        Assert.Null(state.Store.FindProject(project.Id));
+        Assert.Equal(SidebarItem.AllTasks, state.SidebarSelection);
+    }
+
+    [Fact]
+    public void DeletionMessage_NamesParentOrTopLevel()
+    {
+        var state = Nested(out var parent, out var child);
+
+        Assert.Equal(
+            "Its tasks and sub-projects will move to “Work”. You can undo this with Ctrl+Z.",
+            state.ProjectDeletionMessage(child));
+        Assert.Equal(
+            "Its tasks will stay in All Tasks without a project, and its sub-projects will move to the top level. You can undo this with Ctrl+Z.",
+            state.ProjectDeletionMessage(parent));
+    }
+
+    [Fact]
+    public void BoardDropBeforeCard_SwitchesToManual()
+    {
+        var state = InboxState(out var a, out var b, out _);
+        state.Sort = TaskSort.Priority;
+
+        Assert.True(state.HandleDropOnStatus(Payload(a.Id), TaskStatus.InProgress, b.Id, state.VisibleTasks));
+
+        Assert.Equal(TaskSort.Manual, state.Sort);
+    }
+
+    [Fact]
+    public void Tick_ResyncsReminders()
+    {
+        var reminders = new FakeReminders();
+        var state = new AppState(new TaskStore(_temp.Path, _clock, new ManualDebouncer(), reminders), _clock, new AppSettings(), _saved.Add);
+        reminders.Calls.Clear();
+
+        state.Tick();
+
+        Assert.Equal(new[] { "Sync" }, reminders.Calls);
     }
 
     private AppState StateWith(IClock clock) =>

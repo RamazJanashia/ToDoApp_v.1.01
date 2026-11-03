@@ -25,6 +25,11 @@ public sealed partial class SidebarView : UserControl
         ProjectsRepeater.ItemsSource = _projects;
         WorkspaceRepeater.ElementPrepared += (_, e) => Prepare(_workspace, e);
         ProjectsRepeater.ElementPrepared += (_, e) => Prepare(_projects, e);
+        CustomizeGlyph.Glyph = Glyphs.For("slider.horizontal.3");
+        WorkspaceHeader.ContextFlyout = HeaderMenu(("Customize…", s => s.OpenSettings()));
+        ProjectsHeader.ContextFlyout = HeaderMenu(
+            ("Hide Projects", s => s.SetVisible(false, WorkspaceElement.Projects)),
+            ("Customize…", s => s.OpenSettings()));
         Root.PointerEntered += (_, _) => SetHovering(true);
         Root.PointerExited += (_, _) => SetHovering(false);
     }
@@ -37,11 +42,32 @@ public sealed partial class SidebarView : UserControl
         CollectionSync.Sync(_workspace, model.Workspace, row => row.Item);
         CollectionSync.Sync(_projects, model.Projects, row => row.Item);
 
+        WorkspaceHeader.Visibility = model.ShowsWorkspaceHeader ? Visibility.Visible : Visibility.Collapsed;
+        ProjectsHeader.Visibility = model.ShowsProjects ? Visibility.Visible : Visibility.Collapsed;
+        ProjectsHeader.Margin = new Thickness(10, model.ShowsWorkspaceHeader ? 26 : 0, 2, 4);
         _noProjects = model.ShowsEmptyProjectsHint;
         EmptyHint.Visibility = _noProjects ? Visibility.Visible : Visibility.Collapsed;
-        ProjectsRepeater.Visibility = _noProjects ? Visibility.Collapsed : Visibility.Visible;
+        ProjectsRepeater.Visibility = model.ShowsProjects && !_noProjects ? Visibility.Visible : Visibility.Collapsed;
         UpdatePlus();
     }
+
+    private MenuFlyout HeaderMenu(params (string Text, Action<AppState> Action)[] items)
+    {
+        var menu = new MenuFlyout();
+        foreach (var (text, action) in items)
+        {
+            var item = new MenuFlyoutItem { Text = text };
+            item.Click += (_, _) =>
+            {
+                if (_state is { } state) action(state);
+            };
+            menu.Items.Add(item);
+        }
+
+        return menu;
+    }
+
+    private void OnCustomize(object sender, RoutedEventArgs e) => _state?.OpenSettings();
 
     private void Prepare(ObservableCollection<SidebarRowModel> rows, ItemsRepeaterElementPreparedEventArgs e)
     {

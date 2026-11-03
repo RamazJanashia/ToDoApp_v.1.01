@@ -35,7 +35,7 @@ public sealed class InspectorModelTests : IDisposable
         Assert.Equal(new PropertyRowModel("calendar", "Secondary", null, "Add due date", true), model.Due);
         Assert.Equal(new PropertyRowModel("bell", "Secondary", null, "Add reminder", true), model.Reminder);
         Assert.Equal(new PropertyRowModel("flag", "Secondary", null, "Add priority", true), model.Priority);
-        Assert.Equal(new PropertyRowModel("tray", "Secondary", null, "Inbox", false), model.Project);
+        Assert.Equal(new PropertyRowModel("tray", "Secondary", null, "No Project", false), model.Project);
         Assert.Equal(new PropertyRowModel("repeat", "Secondary", null, "Doesn’t repeat", true), model.Repeat);
         Assert.Equal(new PropertyRowModel("circle", "Secondary", null, "To Do", false), model.Status);
         Assert.Equal("", model.Notes);

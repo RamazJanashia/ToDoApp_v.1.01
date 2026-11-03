@@ -223,12 +223,15 @@ internal sealed class ProjectDto
 
     [JsonPropertyName("name")] public string? Name { get; set; }
 
+    [JsonPropertyName("parentID")] public Guid? ParentId { get; set; }
+
     public static ProjectDto From(Project project) => new()
     {
         Color = JsonModel.ToJson(project.Color),
         Icon = project.Icon,
         Id = project.Id,
         Name = project.Name,
+        ParentId = project.ParentId,
     };
 
     public Project ToDomain() => new()
@@ -237,6 +240,7 @@ internal sealed class ProjectDto
         Name = JsonModel.Required(Name, "name"),
         Icon = JsonModel.Required(Icon, "icon"),
         Color = JsonModel.ParseColor(JsonModel.Required(Color, "color")),
+        ParentId = ParentId,
     };
 }
 
@@ -255,11 +259,12 @@ internal sealed class RecurrenceDto
         Weekdays = rule.Weekdays.ToList(),
     };
 
-    // Swift's synthesized decoding does not normalise, so neither does this.
-    public RecurrenceRule ToDomain() => new(
+    // Goes through Create, like the Mac's init(from:), so a hand-edited file can't bring in values the rest of the
+    // code doesn't expect.
+    public RecurrenceRule ToDomain() => RecurrenceRule.Create(
         JsonModel.ParseFrequency(JsonModel.Required(Frequency, "frequency")),
-        JsonModel.Required(Interval, "interval"),
-        new ValueList<int>(JsonModel.Required(Weekdays, "weekdays")));
+        Interval ?? 1,
+        Weekdays ?? new List<int>());
 }
 
 internal sealed class SubtaskDto
@@ -330,7 +335,11 @@ internal sealed class TaskDto
 
     [JsonPropertyName("id")] public Guid? Id { get; set; }
 
+    [JsonPropertyName("nextOccurrenceDueDate")] public DateTime? NextOccurrenceDueDate { get; set; }
+
     [JsonPropertyName("nextOccurrenceID")] public Guid? NextOccurrenceId { get; set; }
+
+    [JsonPropertyName("nextOccurrenceRule")] public RecurrenceDto? NextOccurrenceRule { get; set; }
 
     [JsonPropertyName("notes")] public string? Notes { get; set; }
 
@@ -360,7 +369,9 @@ internal sealed class TaskDto
         DueDate = task.DueDate,
         HasDueTime = task.HasDueTime,
         Id = task.Id,
+        NextOccurrenceDueDate = task.NextOccurrenceDueDate,
         NextOccurrenceId = task.NextOccurrenceId,
+        NextOccurrenceRule = task.NextOccurrenceRule is { } nextRule ? RecurrenceDto.From(nextRule) : null,
         Notes = task.Notes,
         Priority = JsonModel.ToJson(task.Priority),
         ProjectId = task.ProjectId,
@@ -388,6 +399,8 @@ internal sealed class TaskDto
         Recurrence = Recurrence?.ToDomain(),
         RecurrenceDay = RecurrenceDay,
         NextOccurrenceId = NextOccurrenceId,
+        NextOccurrenceDueDate = NextOccurrenceDueDate,
+        NextOccurrenceRule = NextOccurrenceRule?.ToDomain(),
         Subtasks = new ValueList<Subtask>((Subtasks ?? new List<SubtaskDto>()).Select(s => s.ToDomain())),
         Attachments = new ValueList<Attachment>((Attachments ?? new List<AttachmentDto>()).Select(a => a.ToDomain())),
         SortOrder = SortOrder ?? 0,

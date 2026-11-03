@@ -5,9 +5,13 @@
     xmlns:local="using:TodoApp"
     IsTabStop="False">
   <Grid x:Name="Root" Background="{ThemeResource BackgroundBrush}">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="*" />
+      <RowDefinition Height="Auto" />
+    </Grid.RowDefinitions>
     <ScrollViewer VerticalScrollBarVisibility="Hidden" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
       <StackPanel Padding="12,20" Spacing="4">
-        <TextBlock Style="{StaticResource SectionHeaderText}" Text="WORKSPACE" Margin="10,0,0,8" />
+        <TextBlock x:Name="WorkspaceHeader" Style="{StaticResource SectionHeaderText}" Text="WORKSPACE" Margin="10,0,0,8" />
 
         <ItemsRepeater x:Name="WorkspaceRepeater">
           <ItemsRepeater.Layout>
@@ -20,7 +24,7 @@
           </ItemsRepeater.ItemTemplate>
         </ItemsRepeater>
 
-        <Grid Margin="10,26,2,4">
+        <Grid x:Name="ProjectsHeader" Margin="10,26,2,4" Background="Transparent">
           <TextBlock Style="{StaticResource SectionHeaderText}" Text="PROJECTS" VerticalAlignment="Center" />
           <Button
               x:Name="NewProjectButton"
@@ -53,5 +57,26 @@
             Text="Create a project to group related tasks." />
       </StackPanel>
     </ScrollViewer>
+
+    <!-- Always in view at the foot of the sidebar, so hidden things can always be brought back. -->
+    <Button
+        x:Name="CustomizeButton"
+        Grid.Row="1"
+        Style="{StaticResource IconButtonStyle}"
+        Width="Auto"
+        Height="34"
+        Margin="12,10"
+        Padding="10,0"
+        CornerRadius="8"
+        HorizontalAlignment="Stretch"
+        HorizontalContentAlignment="Left"
+        ToolTipService.ToolTip="Choose what the app shows (Ctrl+,)"
+        AutomationProperties.Name="Customize"
+        Click="OnCustomize">
+      <StackPanel Orientation="Horizontal" Spacing="11">
+        <FontIcon x:Name="CustomizeGlyph" FontSize="14" Width="20" />
+        <TextBlock Style="{StaticResource BodyText}" Foreground="{ThemeResource SecondaryTextBrush}" Text="Customize" />
+      </StackPanel>
+    </Button>
   </Grid>
 </UserControl>

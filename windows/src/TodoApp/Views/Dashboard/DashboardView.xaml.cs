@@ -77,6 +77,16 @@ public sealed partial class DashboardView : UserControl
         CompletionText.Text = model.CompletionText;
         Progress.Fraction = stats.CompletionRate;
 
+        // Sections switched off in Settings are hidden; the projects and up-next pair close up when one is gone.
+        static Visibility Shown(bool shows) => shows ? Visibility.Visible : Visibility.Collapsed;
+        Progress.Visibility = CompletionText.Visibility = Shown(model.Shows(WorkspaceElement.DashboardProgress));
+        MetricsFrame.Visibility = Shown(model.Shows(WorkspaceElement.DashboardMetrics));
+        ActivityHeader.Visibility = Chart.Visibility = Shown(model.Shows(WorkspaceElement.DashboardActivity));
+        ProjectsSection.Visibility = Shown(model.Shows(WorkspaceElement.DashboardProjects));
+        UpNextSection.Visibility = Shown(model.Shows(WorkspaceElement.DashboardUpNext));
+        PrioritySection.Visibility = Shown(model.Shows(WorkspaceElement.DashboardPriority));
+        ApplySplit();
+
         BuildMetrics(state, model);
         Chart.Render(stats.Activity, state.Clock.Calendar, state.Clock.UtcNow);
         BuildProjects(state, stats);
@@ -166,7 +176,8 @@ public sealed partial class DashboardView : UserControl
         };
         tile.PointerEntered += (_, _) => label.Foreground = Ink("PrimaryTextBrush");
         tile.PointerExited += (_, _) => label.Foreground = Ink("SecondaryTextBrush");
-        tile.Tapped += (_, _) => state.Select(metric.Target);
+        // A place that's been hidden stays hidden.
+        tile.Tapped += (_, _) => state.SelectIfShown(metric.Target);
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(tile, $"{metric.Label}: {metric.Value}");
         return tile;
     }
@@ -205,7 +216,8 @@ public sealed partial class DashboardView : UserControl
     {
         SplitGrid.ColumnDefinitions.Clear();
         SplitGrid.RowDefinitions.Clear();
-        if (_width >= SideBySideFrom)
+        var both = ProjectsSection.Visibility == Visibility.Visible && UpNextSection.Visibility == Visibility.Visible;
+        if (_width >= SideBySideFrom && both)
         {
             SplitGrid.ColumnSpacing = 44;
             SplitGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });

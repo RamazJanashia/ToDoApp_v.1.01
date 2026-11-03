@@ -55,7 +55,7 @@
               OpenHoverBrush="{ThemeResource CheckboxHoverBrush}"
               DoneBrush="{ThemeResource GreenBrush}"
               TickBrush="{ThemeResource BackgroundBrush}" />
-          <!-- Wraps, up to five 23 px lines. A done task's title is dimmed to about the secondary ink. -->
+          <!-- Wraps to as many lines as it needs. A done task's title is dimmed to about the secondary ink. -->
           <TextBox
               x:Name="TitleBox"
               Grid.Column="1"
@@ -66,7 +66,6 @@
               FontWeight="SemiBold"
               TextWrapping="Wrap"
               AcceptsReturn="False"
-              MaxHeight="115"
               BorderThickness="0"
               Background="Transparent"
               Padding="0"
@@ -154,7 +153,7 @@
           </local:PropertyRow>
         </StackPanel>
 
-        <TextBlock Style="{StaticResource SectionHeaderText}" Margin="0,30,0,10" Text="NOTES" />
+        <TextBlock x:Name="NotesHeader" Style="{StaticResource SectionHeaderText}" Margin="0,30,0,10" Text="NOTES" />
         <!-- Primary ink at 0.85, at least two lines. -->
         <TextBox
             x:Name="NotesBox"

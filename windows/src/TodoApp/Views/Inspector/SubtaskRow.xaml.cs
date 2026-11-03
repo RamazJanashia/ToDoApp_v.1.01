@@ -60,6 +60,8 @@ public sealed partial class SubtaskRow : UserControl
         _title.Push(subtask.Title, force: false);
         Strike.Text = TitleBox.Text;
         CheckIcon.Glyph = Glyphs.For(subtask.IsDone ? "checkmark.square.fill" : "square");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
+            CheckHit, subtask.IsDone ? "Mark Subtask as Incomplete" : "Complete Subtask");
         UpdateStates();
     }
 

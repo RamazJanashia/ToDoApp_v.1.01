@@ -21,6 +21,26 @@ public class DashboardTests
     private static readonly DashboardStats Stats = new(Tasks, new[] { Work }, Now, Berlin);
 
     [Fact]
+    public void Dashboard_ProjectCountsIncludeSubprojects()
+    {
+        var parent = new Project { Name = "Parent" };
+        var child = new Project { Name = "Child", ParentId = parent.Id };
+        var tasks = new List<TaskItem>
+        {
+            new() { Title = "Own", ProjectId = parent.Id },
+            new() { Title = "Child 1", ProjectId = child.Id },
+            new() { Title = "Child 2", ProjectId = child.Id, Status = TaskStatus.Done, CompletedAt = Now },
+        };
+
+        var stats = new DashboardStats(tasks, new[] { parent, child }, Now, Berlin);
+
+        var progress = stats.Projects.Single(p => p.Project.Id == parent.Id);
+        Assert.Equal(3, progress.Total);
+        Assert.Equal(1, progress.Done);
+        Assert.Equal(2, stats.Projects.Single(p => p.Project.Id == child.Id).Total);
+    }
+
+    [Fact]
     public void OpenAndDone()
     {
         Assert.Equal(5, Stats.Open);

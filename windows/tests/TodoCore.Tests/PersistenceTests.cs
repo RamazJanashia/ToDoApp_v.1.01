@@ -170,6 +170,98 @@ public sealed class PersistenceTests : IDisposable
         Assert.True(first.Projects.SequenceEqual(second.Projects));
     }
 
+    private static readonly string SubprojectsFixturePath =
+        Path.Combine(AppContext.BaseDirectory, "Fixtures", "mac-subprojects.json");
+
+    private AppData LoadRaw(string json)
+    {
+        WriteRaw(json);
+        return _store.Load()!;
+    }
+
+    [Fact]
+    public void Load_MacSubprojectsFixture()
+    {
+        Directory.CreateDirectory(_directory);
+        File.Copy(SubprojectsFixturePath, _store.FilePath);
+        var data = _store.Load();
+        Assert.NotNull(data);
+
+        var work = data.Projects.Single(p => p.Name == "Work");
+        var clients = data.Projects.Single(p => p.Name == "Clients");
+        Assert.Null(work.ParentId);
+        Assert.Equal(work.Id, clients.ParentId);
+
+        var done = data.Tasks.Single(t => t.IsCompleted);
+        Assert.Equal(D(2026, 11, 3), done.NextOccurrenceDueDate);
+        Assert.Equal(RecurrenceRule.Daily, done.NextOccurrenceRule);
+        Assert.Equal(Guid.Parse("55555555-5555-5555-5555-555555555555"), done.NextOccurrenceId);
+        Assert.Equal("2026-11-02/33333333-3333-3333-3333-333333333333-report.pdf", Assert.Single(done.Attachments).Location);
+    }
+
+    [Fact]
+    public void RoundTrip_MacSubprojectsFixture_IsLossless()
+    {
+        Directory.CreateDirectory(_directory);
+        File.Copy(SubprojectsFixturePath, _store.FilePath);
+        var first = _store.Load()!;
+
+        _store.Save(first);
+        var second = _store.Load()!;
+
+        Assert.True(first.Tasks.SequenceEqual(second.Tasks));
+        Assert.True(first.Projects.SequenceEqual(second.Projects));
+    }
+
+    [Fact]
+    public void Save_NewKeysSortedAndOmittedWhenNull()
+    {
+        var parent = new Project { Name = "Work" };
+        var child = new Project { Name = "Clients", ParentId = parent.Id };
+        var linked = new TaskItem
+        {
+            Title = "Linked",
+            NextOccurrenceId = Guid.NewGuid(),
+            NextOccurrenceDueDate = Now,
+            NextOccurrenceRule = RecurrenceRule.Daily,
+            CreatedAt = Now,
+        };
+        _store.Save(new AppData(AppData.CurrentVersion, new[] { child }, new[] { linked }));
+        var text = File.ReadAllText(_store.FilePath);
+
+        Assert.True(text.IndexOf("\"name\"", StringComparison.Ordinal) < text.IndexOf("\"parentID\"", StringComparison.Ordinal));
+        var dueDate = text.IndexOf("\"nextOccurrenceDueDate\"", StringComparison.Ordinal);
+        var id = text.IndexOf("\"nextOccurrenceID\"", StringComparison.Ordinal);
+        var rule = text.IndexOf("\"nextOccurrenceRule\"", StringComparison.Ordinal);
+        var notes = text.IndexOf("\"notes\"", StringComparison.Ordinal);
+        Assert.True(dueDate >= 0 && dueDate < id && id < rule && rule < notes, text);
+
+        _store.Save(new AppData(AppData.CurrentVersion, new[] { parent }, new[] { new TaskItem { Title = "Plain" } }));
+        var plain = File.ReadAllText(_store.FilePath);
+        Assert.DoesNotContain("parentID", plain);
+        Assert.DoesNotContain("nextOccurrence", plain);
+    }
+
+    [Fact]
+    public void Load_RecurrenceIsNormalised()
+    {
+        static string With(string rule) =>
+            $$"""{"version":1,"projects":[],"tasks":[{"id":"0A240A86-0CE0-4A2F-A825-C63683229382","recurrence":{{rule}}}]}""";
+
+        var badWeekdays = LoadRaw(With("""{"frequency":"weekly","interval":0,"weekdays":[9,2,2]}""")).Tasks[0].Recurrence!;
+        Assert.Equal(1, badWeekdays.Interval);
+        Assert.Equal(new[] { 2 }, badWeekdays.Weekdays);
+        Assert.NotEmpty(badWeekdays.Summary);
+
+        var huge = LoadRaw(With("""{"frequency":"daily","interval":5000,"weekdays":[]}""")).Tasks[0].Recurrence!;
+        Assert.Equal(RecurrenceRule.MaximumInterval, huge.Interval);
+        Assert.True(huge.NextDate(Now, null, Berlin) > Now);
+
+        var noWeekdays = LoadRaw(With("""{"frequency":"daily","interval":2}""")).Tasks[0].Recurrence!;
+        Assert.Equal(2, noWeekdays.Interval);
+        Assert.Empty(noWeekdays.Weekdays);
+    }
+
     [Fact]
     public void Save_WritesMacShapedJson()
     {

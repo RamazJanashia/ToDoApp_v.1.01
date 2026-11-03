@@ -9,6 +9,9 @@ public interface IReminderScheduler
 
     void Sync(IReadOnlyList<TaskItem> tasks, IReadOnlyList<Project> projects);
 
+    /// <summary>True when Windows won't show this app's notifications, so a reminder the user sets wouldn't appear.</summary>
+    bool AreNotificationsBlocked { get; }
+
     /// <summary>Raised when the user clicks a reminder; carries the task to show.</summary>
     event EventHandler<Guid>? OpenTaskRequested;
 }

@@ -15,19 +15,19 @@ public sealed class SidebarModelTests : IDisposable
         var model = SidebarModel.Build(_f.State);
 
         Assert.Equal(
-            new[] { "Inbox", "Today", "Upcoming", "Completed", "Dashboard" },
+            new[] { "All Tasks", "Today", "Upcoming", "Completed", "Dashboard" },
             model.Workspace.Select(r => r.Title).ToArray());
         Assert.Equal(
             new[] { "tray", "sun.max", "calendar", "checkmark.circle", "square.grid.2x2" },
             model.Workspace.Select(r => r.Icon).ToArray());
         Assert.Equal(
-            new[] { SidebarItem.Inbox, SidebarItem.Today, SidebarItem.Upcoming, SidebarItem.Completed, SidebarItem.Dashboard },
+            new[] { SidebarItem.AllTasks, SidebarItem.Today, SidebarItem.Upcoming, SidebarItem.Completed, SidebarItem.Dashboard },
             model.Workspace.Select(r => r.Item).ToArray());
         Assert.All(model.Workspace, r => Assert.Null(r.Tint));
     }
 
     [Fact]
-    public void Counts_OnlyForInboxTodayUpcomingAndProjects()
+    public void Counts_OnlyForAllTasksTodayUpcomingAndProjects()
     {
         var project = _f.Store.CreateProject("Home", "house", ProjectColor.Green);
         _f.Store.CreateTask("Inbox 1");
@@ -42,7 +42,8 @@ public sealed class SidebarModelTests : IDisposable
         var model = SidebarModel.Build(_f.State);
         int? Count(string title) => model.Workspace.Single(r => r.Title == title).Count;
 
-        Assert.Equal(5, Count("Inbox"));
+        // Every open task, the project's included.
+        Assert.Equal(6, Count("All Tasks"));
         Assert.Equal(1, Count("Today"));
         Assert.Equal(2, Count("Upcoming"));
         Assert.Null(Count("Completed"));

@@ -29,10 +29,12 @@
       </VisualStateGroup>
     </VisualStateManager.VisualStateGroups>
 
-    <Grid Padding="10,0" ColumnSpacing="11">
+    <!-- The left padding grows with the project's depth (Bind). -->
+    <Grid x:Name="Body" Padding="10,0" ColumnSpacing="11">
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="20" />
         <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="Auto" />
         <ColumnDefinition Width="Auto" />
       </Grid.ColumnDefinitions>
       <!-- Workspace rows use primary ink at 0.82; project rows use their colour (TintGlyph). -->
@@ -53,6 +55,16 @@
           FontSize="13"
           VerticalAlignment="Center"
           docs:Typography.NumeralAlignment="Tabular" />
+      <!-- Shows or hides the sub-projects; only on a project with something under it. -->
+      <Button
+          x:Name="ChevronButton"
+          Grid.Column="3"
+          Style="{StaticResource IconButtonStyle}"
+          Width="16"
+          Height="20"
+          FontSize="9.5"
+          Foreground="{ThemeResource TertiaryTextBrush}"
+          Visibility="Collapsed" />
     </Grid>
 
     <Border

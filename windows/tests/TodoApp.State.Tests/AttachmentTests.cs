@@ -26,7 +26,7 @@ public sealed class AttachmentTests : IDisposable
     [Fact]
     public void Link_AcceptsBareDomain()
     {
-        var link = AttachmentStorage.Link("  example.com/page ", Now);
+        var link = AttachmentLink.FromText("  example.com/page ", Now);
 
         Assert.NotNull(link);
         Assert.Equal(AttachmentKind.Link, link.Kind);
@@ -38,12 +38,12 @@ public sealed class AttachmentTests : IDisposable
     [Fact]
     public void Link_StripsWwwAndKeepsExplicitScheme()
     {
-        var link = AttachmentStorage.Link("http://www.example.org/a?b=1", Now);
+        var link = AttachmentLink.FromText("http://www.example.org/a?b=1", Now);
 
         Assert.NotNull(link);
         Assert.Equal("example.org", link.Name);
         Assert.Equal("http://www.example.org/a?b=1", link.Location);
-        Assert.Equal("localhost", AttachmentStorage.Link("localhost:3000", Now)!.Name);
+        Assert.Equal("localhost", AttachmentLink.FromText("localhost:3000", Now)!.Name);
     }
 
     [Theory]
@@ -54,20 +54,23 @@ public sealed class AttachmentTests : IDisposable
     [InlineData("https://intranet/page")]
     public void Link_RejectsSpacesAndHostWithoutDot(string text)
     {
-        Assert.Null(AttachmentStorage.Link(text, Now));
+        Assert.Null(AttachmentLink.FromText(text, Now));
     }
 
     [Fact]
-    public void Import_CopiesFileUnderGuidPrefixedName()
+    public void Import_CopiesFileUnderGuidPrefixedNameInTodaysFolder()
     {
         var storage = NewStorage();
         var source = Source("report.pdf", "hello");
 
-        var attachment = storage.ImportFile(source, Now);
+        var attachment = storage.ImportFile(source, Now, Berlin);
 
         Assert.Equal(AttachmentKind.File, attachment.Kind);
         Assert.Equal("report.pdf", attachment.Name);
-        Assert.Equal($"{attachment.Id.ToString("D").ToUpperInvariant()}-report.pdf", attachment.Location);
+        Assert.Equal($"2026-10-23/{attachment.Id.ToString("D").ToUpperInvariant()}-report.pdf", attachment.Location);
+        Assert.Equal(
+            Path.Combine(_temp.Path, "Attachments", "2026-10-23", $"{attachment.Id.ToString("D").ToUpperInvariant()}-report.pdf"),
+            storage.PathFor(attachment));
         Assert.Equal(Now, attachment.AddedAt);
         Assert.Equal("hello", File.ReadAllText(storage.PathFor(attachment)!));
         Assert.True(File.Exists(source));
@@ -79,8 +82,8 @@ public sealed class AttachmentTests : IDisposable
         var storage = NewStorage();
         var source = Source("same.txt");
 
-        var a = storage.ImportFile(source, Now);
-        var b = storage.ImportFile(source, Now);
+        var a = storage.ImportFile(source, Now, Berlin);
+        var b = storage.ImportFile(source, Now, Berlin);
 
         Assert.NotEqual(a.Location, b.Location);
         Assert.True(File.Exists(storage.PathFor(a)));
@@ -94,7 +97,7 @@ public sealed class AttachmentTests : IDisposable
         var name = new string('a', 200) + ".docx";
         var source = Source(name);
 
-        var attachment = storage.ImportFile(source, Now);
+        var attachment = storage.ImportFile(source, Now, Berlin);
 
         var stored = storage.PathFor(attachment)!;
         Assert.True(stored.Length <= 240, $"path was {stored.Length} chars");
@@ -108,9 +111,49 @@ public sealed class AttachmentTests : IDisposable
     {
         var storage = NewStorage();
 
-        Assert.Null(storage.PathFor(AttachmentStorage.Link("example.com", Now)!));
+        Assert.Null(storage.PathFor(AttachmentLink.FromText("example.com", Now)!));
         var file = new Attachment { Kind = AttachmentKind.File, Name = "a.txt", Location = "ID-a.txt" };
         Assert.Equal(Path.Combine(_temp.Path, "Attachments", "ID-a.txt"), storage.PathFor(file));
+    }
+
+    [Theory]
+    [InlineData(@"..\..\tasks.json")]
+    [InlineData("2026-11-02/../../tasks.json")]
+    [InlineData(@"C:\Windows\notepad.exe")]
+    public void PathFor_RefusesLocationsOutsideTheFolder(string location)
+    {
+        var hostile = new Attachment { Kind = AttachmentKind.File, Name = "x", Location = location };
+        Assert.Null(NewStorage().PathFor(hostile));
+    }
+
+    [Theory]
+    [InlineData(@"C:\Windows\System32\notepad.exe")]
+    [InlineData(@"..\..\x.exe")]
+    [InlineData("file:///C:/x")]
+    [InlineData("javascript:alert(1)")]
+    [InlineData("ms-msdt:/id x")]
+    public void OpenTarget_LinkThatIsNotWebOrMail_OpensNothing(string location)
+    {
+        var link = new Attachment { Kind = AttachmentKind.Link, Name = "x", Location = location };
+        Assert.Null(NewStorage().OpenTarget(link));
+    }
+
+    [Fact]
+    public void OpenTarget_WebAndMailLinksAndStoredFiles()
+    {
+        var storage = NewStorage();
+        Assert.Equal("https://a.b", storage.OpenTarget(new Attachment { Kind = AttachmentKind.Link, Name = "a.b", Location = "https://a.b" }));
+        Assert.Equal("mailto:a@b.c", storage.OpenTarget(new Attachment { Kind = AttachmentKind.Link, Name = "a@b.c", Location = "mailto:a@b.c" }));
+        var file = new Attachment { Kind = AttachmentKind.File, Name = "a.pdf", Location = "2026-11-02/ID-a.pdf" };
+        Assert.Equal(storage.PathFor(file), storage.OpenTarget(file));
+        Assert.Null(storage.OpenTarget(new Attachment { Kind = AttachmentKind.File, Name = "x", Location = @"..\..\x.exe" }));
+    }
+
+    [Fact]
+    public void PathFor_MacStyleDatedLocationResolvesInside()
+    {
+        var file = new Attachment { Kind = AttachmentKind.File, Name = "a.pdf", Location = "2026-11-02/ID-a.pdf" };
+        Assert.Equal(Path.Combine(_temp.Path, "Attachments", "2026-11-02", "ID-a.pdf"), NewStorage().PathFor(file));
     }
 
     [Theory]
@@ -145,12 +188,12 @@ public sealed class AttachmentTests : IDisposable
     public void RemoveFiles_KeepsReferencedAndDotFiles()
     {
         var storage = NewStorage();
-        var kept = storage.ImportFile(Source("keep.txt"), Now);
-        var dropped = storage.ImportFile(Source("drop.txt"), Now);
+        var kept = storage.ImportFile(Source("keep.txt"), Now, Berlin);
+        var dropped = storage.ImportFile(Source("drop.txt"), Now, Berlin);
         var hidden = Path.Combine(_temp.Path, "Attachments", ".hidden");
         File.WriteAllText(hidden, "x");
 
-        storage.RemoveFiles(new HashSet<string> { kept.Location });
+        storage.RemoveFiles(new HashSet<string> { kept.Location }, "9999-12-31");
 
         Assert.True(File.Exists(storage.PathFor(kept)));
         Assert.False(File.Exists(storage.PathFor(dropped)));
@@ -160,7 +203,7 @@ public sealed class AttachmentTests : IDisposable
     [Fact]
     public void RemoveFiles_MissingDirectoryIsFine()
     {
-        NewStorage().RemoveFiles(new HashSet<string>());
+        NewStorage().RemoveFiles(new HashSet<string>(), DatedFolder.Name(Now, Berlin));
     }
 
     [Theory]
@@ -186,44 +229,74 @@ public sealed class AttachmentTests : IDisposable
     }
 
     [Fact]
-    public void AttachFiles_AddsAttachmentWithUndo()
+    public async Task AttachFiles_AddsAttachmentWithUndo()
     {
         var store = NewStore();
         var task = store.CreateTask("T");
 
-        store.AttachFiles(new[] { Source("a.txt"), Source("b.txt") }, task.Id);
+        await store.AttachFilesAsync(new[] { Source("a.txt"), Source("b.txt") }, task.Id);
 
         var attachments = store.FindTask(task.Id)!.Attachments;
         Assert.Equal(new[] { "a.txt", "b.txt" }, attachments.Select(a => a.Name));
         Assert.All(attachments, a => Assert.True(File.Exists(store.Attachments.PathFor(a))));
+        Assert.Equal("Add Attachment", store.Undo.UndoActionName);
 
         store.Undo.Undo();
         Assert.Empty(store.FindTask(task.Id)!.Attachments);
     }
 
     [Fact]
-    public void AttachFiles_SkipsUnreadableSource_AndLogs()
+    public async Task AttachFiles_CopiesIntoDatedFolder()
     {
         var store = NewStore();
         var task = store.CreateTask("T");
-        var missing = Path.Combine(_temp.Path, "does-not-exist.txt");
 
-        var ex = Record.Exception(() => store.AttachFiles(new[] { missing }, task.Id));
+        await store.AttachFilesAsync(new[] { Source("report.pdf") }, task.Id);
 
-        Assert.Null(ex);
-        Assert.Empty(store.FindTask(task.Id)!.Attachments);
+        var attachment = store.FindTask(task.Id)!.Attachments.Single();
+        Assert.Matches(@"^2026-10-23/[0-9A-F-]{36}-report\.pdf$", attachment.Location);
+        Assert.True(File.Exists(store.Attachments.PathFor(attachment)));
+        Assert.Null(store.Alert);
     }
 
     [Fact]
-    public void AttachFiles_OneBadSourceDoesNotStopTheOthers()
+    public async Task AttachFiles_FailureReportedAddsNothing()
+    {
+        var store = NewStore();
+        var task = store.CreateTask("T");
+        var missing = Path.Combine(_temp.Path, "missing.pdf");
+
+        var ex = await Record.ExceptionAsync(() => store.AttachFilesAsync(new[] { missing }, task.Id));
+
+        Assert.Null(ex);
+        Assert.Empty(store.FindTask(task.Id)!.Attachments);
+        Assert.Equal("Couldn’t attach a file", store.Alert?.Title);
+        Assert.Contains("missing.pdf", store.Alert!.Message);
+    }
+
+    [Fact]
+    public async Task AttachFiles_OneBadSourceDoesNotStopTheOthers()
     {
         var store = NewStore();
         var task = store.CreateTask("T");
         var missing = Path.Combine(_temp.Path, "does-not-exist.txt");
 
-        store.AttachFiles(new[] { missing, Source("ok.txt") }, task.Id);
+        await store.AttachFilesAsync(new[] { missing, Source("ok.txt") }, task.Id);
 
         Assert.Equal("ok.txt", store.FindTask(task.Id)!.Attachments.Single().Name);
+        Assert.Contains("does-not-exist.txt", store.Alert?.Message);
+    }
+
+    [Fact]
+    public void AttachLink_AcceptsMailtoRefusesJavascript()
+    {
+        var store = NewStore();
+        var task = store.CreateTask("T");
+
+        Assert.True(store.AttachLink("mailto:a@b.c", task.Id));
+        Assert.False(store.AttachLink("javascript:alert(1)", task.Id));
+        Assert.False(store.AttachLink("file:///C:/Windows/notepad.exe", task.Id));
+        Assert.Equal("a@b.c", store.FindTask(task.Id)!.Attachments.Single().Name);
     }
 
     [Fact]

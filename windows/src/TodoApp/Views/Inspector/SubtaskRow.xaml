@@ -16,7 +16,8 @@
     <Thickness x:Key="TextControlBorderThemeThicknessFocused">0</Thickness>
   </UserControl.Resources>
 
-  <Grid x:Name="Root" Height="34" ColumnSpacing="12" Background="Transparent">
+  <!-- Grows with a title that wraps; the check and the delete button stay by its first line. -->
+  <Grid x:Name="Root" MinHeight="34" Padding="0,8" ColumnSpacing="12" Background="Transparent">
     <Grid.ColumnDefinitions>
       <ColumnDefinition Width="20" />
       <ColumnDefinition Width="*" />
@@ -58,20 +59,19 @@
       </VisualStateGroup>
     </VisualStateManager.VisualStateGroups>
 
-    <Border x:Name="CheckHit" Background="Transparent" Width="20" Height="20" VerticalAlignment="Center">
+    <Border x:Name="CheckHit" Background="Transparent" Width="20" Height="20" VerticalAlignment="Top">
       <FontIcon x:Name="CheckIcon" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center" />
     </Border>
 
-    <Grid Grid.Column="1" VerticalAlignment="Center">
+    <Grid Grid.Column="1" VerticalAlignment="Top">
       <TextBlock
           x:Name="Strike"
           Style="{StaticResource BodyText}"
           Foreground="{ThemeResource TertiaryTextBrush}"
           TextDecorations="Strikethrough"
-          TextWrapping="NoWrap"
-          TextTrimming="CharacterEllipsis"
+          TextWrapping="Wrap"
           IsHitTestVisible="False"
-          VerticalAlignment="Center"
+          VerticalAlignment="Top"
           Margin="0"
           Visibility="Collapsed" />
       <TextBox
@@ -81,12 +81,12 @@
           Foreground="{ThemeResource PrimaryTextBrush}"
           FontSize="14"
           AcceptsReturn="False"
-          TextWrapping="NoWrap"
+          TextWrapping="Wrap"
           BorderThickness="0"
           Background="Transparent"
           Padding="0"
           MinHeight="0"
-          VerticalAlignment="Center"
+          VerticalAlignment="Top"
           AutomationProperties.Name="Subtask" />
     </Grid>
 
@@ -98,8 +98,8 @@
         Height="20"
         FontSize="10"
         Opacity="0"
-        VerticalAlignment="Center"
+        VerticalAlignment="Top"
         ToolTipService.ToolTip="Delete Subtask"
-        AutomationProperties.Name="Delete subtask" />
+        AutomationProperties.Name="Delete Subtask" />
   </Grid>
 </UserControl>

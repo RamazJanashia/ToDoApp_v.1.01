@@ -112,8 +112,20 @@ public sealed partial class InspectorView : UserControl
         RepeatRow.Show(model.Repeat);
         StatusRow.Show(model.Status);
 
+        // Rows and sections switched off in Settings are hidden, not removed (WinUI can't put an element back).
+        static Visibility Shown(bool shows) => shows ? Visibility.Visible : Visibility.Collapsed;
+        DueRow.Visibility = Shown(model.Shows(WorkspaceElement.DetailDueDate));
+        ReminderRow.Visibility = Shown(model.Shows(WorkspaceElement.DetailReminder));
+        PriorityRow.Visibility = Shown(model.Shows(WorkspaceElement.DetailPriority));
+        ProjectRow.Visibility = Shown(model.Shows(WorkspaceElement.DetailProject));
+        RepeatRow.Visibility = Shown(model.Shows(WorkspaceElement.DetailRepeat));
+        StatusRow.Visibility = Shown(model.Shows(WorkspaceElement.DetailStatus));
+        NotesHeader.Visibility = NotesBox.Visibility = Shown(model.Shows(WorkspaceElement.DetailNotes));
+        Subtasks.Visibility = Shown(model.Shows(WorkspaceElement.DetailSubtasks));
+        AttachmentList.Visibility = Shown(model.Shows(WorkspaceElement.DetailAttachments));
+
         _notes.Push(model.Notes, switched);
-        Subtasks.Render(state, model.TaskId, model.Subtasks, model.SubtaskProgress);
+        Subtasks.Render(state, model.TaskId, model.Subtasks, model.SubtaskProgress, model.SubtaskFraction);
         AttachmentList.Render(state, model.TaskId, model.Attachments);
         CreatedText.Text = model.CreatedText;
 
@@ -209,7 +221,7 @@ public sealed partial class InspectorView : UserControl
             var items = new List<OptionItem>
             {
                 OptionItem.Choice(
-                    "Inbox",
+                    "No Project",
                     () =>
                     {
                         store.UpdateTask(id, "Move to Project", t => t with { ProjectId = null });
@@ -218,8 +230,9 @@ public sealed partial class InspectorView : UserControl
                     icon: "tray",
                     isSelected: task.ProjectId is null),
             };
-            foreach (var project in store.Projects)
+            foreach (var entry in store.Projects.Outline())
             {
+                var project = entry.Project;
                 var projectId = project.Id;
                 items.Add(OptionItem.Choice(
                     project.Name,
@@ -231,7 +244,8 @@ public sealed partial class InspectorView : UserControl
                     icon: project.Icon,
                     isSelected: task.ProjectId == projectId,
                     iconToken: "Project",
-                    iconProjectColor: project.Color));
+                    iconProjectColor: project.Color,
+                    indent: 14 * entry.Depth));
             }
 
             items.Add(OptionItem.Separator());

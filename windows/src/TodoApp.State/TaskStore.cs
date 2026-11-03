@@ -3,6 +3,9 @@ using TaskStatus = TodoCore.TaskStatus;
 
 namespace TodoApp.State;
 
+/// <summary>Something the user needs to know that a log line wouldn't tell them.</summary>
+public sealed record StoreAlert(string Title, string Message);
+
 /// <summary>
 /// The single source of truth for tasks and projects.
 /// Main-thread only. Every mutation goes through a method here so that saving, reminder scheduling and undo stay
@@ -15,8 +18,15 @@ public sealed class TaskStore
     private readonly IDebouncer _saveDebouncer;
     private readonly IReminderScheduler _reminders;
 
-    // Off for the session when an unreadable data file couldn't be set aside, so it is never overwritten.
+    /// <summary>How long backups are kept, and how long a file attached but no longer used stays around.</summary>
+    private const int RetentionDays = 30;
+
+    // Off for the session when saving would overwrite a file that must be kept: one that couldn't be set aside, or
+    // one from a newer version of the app.
     private bool _canSave = true;
+
+    // One alert per run of failures, not one per save.
+    private bool _saveFailureReported;
 
     // Replaced, never mutated, so a snapshot is just a pair of references.
     private IReadOnlyList<TaskItem> _tasks = Array.Empty<TaskItem>();
@@ -42,8 +52,16 @@ public sealed class TaskStore
 
     public IReadOnlyList<Project> Projects => _projects;
 
-    /// <summary>Set when the saved file couldn't be read at launch; shown once to the user.</summary>
-    public string? LoadIssue { get; set; }
+    /// <summary>Shown once to the user, then dismissed.</summary>
+    public StoreAlert? Alert { get; private set; }
+
+    /// <summary>A new <see cref="Alert"/> is waiting to be shown.</summary>
+    public event EventHandler? AlertRaised;
+
+    /// <summary>The one folder that holds everything: tasks, backups and attachments.</summary>
+    public string DataDirectory => _fileStore.Directory;
+
+    public void DismissAlert() => Alert = null;
 
     public UndoManager Undo { get; } = new();
 
@@ -138,20 +156,9 @@ public sealed class TaskStore
         var index = IndexOfTask(id);
         if (index < 0) return null;
         var original = _tasks[index];
-        var now = _clock.UtcNow;
         var following = _tasks.Select(t => t.SortOrder).Where(order => order > original.SortOrder).ToList();
-        var copy = original with
+        var copy = original.Duplicated(_clock.UtcNow) with
         {
-            Id = Guid.NewGuid(),
-            CreatedAt = now,
-            Subtasks = new ValueList<Subtask>(original.Subtasks.Select(s => new Subtask { Title = s.Title, IsDone = s.IsDone })),
-            Attachments = new ValueList<Attachment>(original.Attachments.Select(a => new Attachment
-            {
-                Kind = a.Kind,
-                Name = a.Name,
-                Location = a.Location,
-                AddedAt = now,
-            })),
             SortOrder = following.Count > 0 ? (original.SortOrder + following.Min()) / 2 : original.SortOrder + 1,
         };
         Undoable("Duplicate Task", (tasks, _) => tasks.Insert(index + 1, copy));
@@ -166,9 +173,7 @@ public sealed class TaskStore
     {
         var index = IndexOfTask(id);
         if (index < 0) return;
-        var task = _tasks[index];
-        if (task.Title.Trim().Length != 0 || task.Notes.Trim().Length != 0
-            || task.Subtasks.Count != 0 || task.Attachments.Count != 0) return;
+        if (!_tasks[index].IsBlank) return;
         Apply((tasks, _) => tasks.RemoveAt(index));
         DidChange();
     }
@@ -183,36 +188,59 @@ public sealed class TaskStore
     /// <summary>Places <paramref name="id"/> directly before <paramref name="beforeId"/> within <paramref name="ordered"/> (the list as the user sees it).</summary>
     public void MoveTask(Guid id, Guid beforeId, IReadOnlyList<TaskItem> ordered)
     {
-        if (TaskOperations.SortOrderPlacing(id, beforeId, ordered) is not { } order) return;
-        UpdateTask(id, "Move Task", t => t with { SortOrder = order });
+        ArgumentNullException.ThrowIfNull(ordered);
+        if (TaskOperations.SortOrderPlacing(id, beforeId, ordered) is null) return;
+        Undoable("Move Task", (tasks, _) => TaskOperations.Move(id, beforeId, ordered, tasks));
     }
 
     // Attachments
 
-    public void AttachFiles(IEnumerable<string> paths, Guid taskId)
+    /// <summary>
+    /// Copies on a background thread, because attachments can be large enough to freeze the window, then adds them
+    /// in one undoable step. Call it on the UI thread: it continues there.
+    /// </summary>
+    public async Task AttachFilesAsync(IEnumerable<string> paths, Guid taskId)
     {
         ArgumentNullException.ThrowIfNull(paths);
-        var added = new List<Attachment>();
-        foreach (var path in paths)
-        {
-            try
-            {
-                added.Add(Attachments.ImportFile(path, _clock.UtcNow));
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
-            {
-                AppLog.Error($"Couldn't attach {SafeFileName(path)}", ex);
-            }
-        }
+        var files = paths.ToList();
+        if (files.Count == 0) return;
+        var now = _clock.UtcNow;
+        var calendar = _clock.Calendar;
+        var storage = Attachments;
 
-        if (added.Count == 0) return;
-        UpdateTask(taskId, "Add Attachment", t => t with { Attachments = t.Attachments.AddRange(added) });
+        var (added, failed) = await Task.Run(() =>
+        {
+            var copied = new List<Attachment>();
+            var refused = new List<(string Name, Exception Error)>();
+            foreach (var path in files)
+            {
+                try
+                {
+                    copied.Add(storage.ImportFile(path, now, calendar));
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+                {
+                    refused.Add((SafeFileName(path), ex));
+                }
+            }
+
+            return (copied, refused);
+        });
+
+        if (added.Count > 0) UpdateTask(taskId, "Add Attachment", t => t with { Attachments = t.Attachments.AddRange(added) });
+        foreach (var (name, error) in failed) AppLog.Error($"Couldn't attach {name}", error);
+        if (failed.Count > 0)
+        {
+            Show(
+                "Couldn’t attach a file",
+                $"{string.Join(", ", failed.Select(f => f.Name))} couldn’t be copied. {failed[0].Error.Message}");
+        }
     }
 
-    /// <summary>Returns false when the text isn't a usable web address.</summary>
+    /// <summary>Returns false when the text isn't a usable web or mail address.</summary>
     public bool AttachLink(string text, Guid taskId)
     {
-        if (AttachmentStorage.Link(text, _clock.UtcNow) is not { } attachment) return false;
+        if (AttachmentLink.FromText(text, _clock.UtcNow) is not { } attachment) return false;
         UpdateTask(taskId, "Add Link", t => t with { Attachments = t.Attachments.Add(attachment) });
         return true;
     }
@@ -230,9 +258,9 @@ public sealed class TaskStore
 
     // Projects
 
-    public Project CreateProject(string name, string icon, ProjectColor color)
+    public Project CreateProject(string name, string icon, ProjectColor color, Guid? parentId = null)
     {
-        var project = new Project { Name = name, Icon = icon, Color = color };
+        var project = new Project { Name = name, Icon = icon, Color = color, ParentId = parentId };
         Undoable("New Project", (_, projects) => projects.Add(project));
         return project;
     }
@@ -248,31 +276,37 @@ public sealed class TaskStore
         Undoable("Edit Project", (_, projects) => projects[index] = project);
     }
 
-    /// <summary>Deletes the project; its tasks move to the Inbox rather than disappearing.</summary>
+    /// <summary>Deletes the project; what's under it moves up rather than disappearing.</summary>
     public void DeleteProject(Guid id)
     {
-        Undoable("Delete Project", (tasks, projects) =>
+        Undoable("Delete Project", (tasks, projects) => TaskOperations.DeleteProject(id, projects, tasks));
+    }
+
+    /// <summary>Puts the project directly above <paramref name="beforeId"/>, as its sibling; never inside itself.</summary>
+    public void MoveProject(Guid id, Guid beforeId)
+    {
+        var reordered = _projects.ToList();
+        if (!reordered.MoveProject(id, beforeId)) return;
+        Undoable("Move Project", (_, projects) =>
         {
-            projects.RemoveAll(p => p.Id == id);
-            for (var index = 0; index < tasks.Count; index++)
-            {
-                if (tasks[index].ProjectId == id) tasks[index] = tasks[index] with { ProjectId = null };
-            }
+            projects.Clear();
+            projects.AddRange(reordered);
         });
     }
 
-    public void MoveProject(Guid id, Guid beforeId)
+    // Reminders
+
+    /// <summary>When the user sets a reminder: says so if Windows won't show it.</summary>
+    public void ConfirmRemindersAllowed()
     {
-        var from = IndexOfProject(id);
-        if (id == beforeId || from < 0) return;
-        Undoable("Move Project", (_, projects) =>
-        {
-            var project = projects[from];
-            projects.RemoveAt(from);
-            var to = projects.FindIndex(p => p.Id == beforeId);
-            projects.Insert(to < 0 ? projects.Count : to, project);
-        });
+        if (!_reminders.AreNotificationsBlocked) return;
+        Show(
+            "Reminders are turned off",
+            "Allow notifications for TodoApp in Settings ▸ System ▸ Notifications, or this reminder won’t appear.");
     }
+
+    /// <summary>Picks up what time alone changes: reminders past the limit coming into range as earlier ones fire.</summary>
+    public void ResyncReminders() => _reminders.Sync(_tasks, _projects);
 
     // Undo
 
@@ -324,7 +358,12 @@ public sealed class TaskStore
             var current = new Snapshot(_tasks, _projects);
             var live = new Dictionary<Guid, TaskItem>();
             foreach (var task in _tasks) live.TryAdd(task.Id, task);
-            _tasks = snapshot.Tasks.Select(t => KeepingText(live.GetValueOrDefault(t.Id), t)).ToList().AsReadOnly();
+            // A blank task that's gone is a discarded draft, not something to bring back.
+            _tasks = snapshot.Tasks
+                .Where(t => !t.IsBlank || live.ContainsKey(t.Id))
+                .Select(t => KeepingText(live.GetValueOrDefault(t.Id), t))
+                .ToList()
+                .AsReadOnly();
             _projects = snapshot.Projects;
             RegisterRestore(current, actionName);
             DidChange();
@@ -358,34 +397,74 @@ public sealed class TaskStore
         {
             saved = _fileStore.Load();
         }
+        catch (NewerDataFileException ex)
+        {
+            AppLog.Error($"Data file has newer version {ex.Version}", ex);
+            _canSave = false;
+            Show(
+                "Couldn’t open your tasks",
+                "Your tasks were saved by a newer version of TodoApp. To protect them, changes won’t be saved here. "
+                    + $"Please update TodoApp. The file is tasks.json in {_fileStore.Directory}.");
+            return;
+        }
         catch (Exception ex)
         {
             AppLog.Error("Couldn't read saved tasks", ex);
             RecoverFromUnreadableFile();
-            // No attachment cleanup here: the unreadable file may still refer to every attachment.
             return;
         }
 
-        if (saved is not null)
-        {
-            _tasks = saved.Tasks.ToList().AsReadOnly();
-            _projects = saved.Projects.ToList().AsReadOnly();
-            _reminders.Sync(_tasks, _projects);
-        }
-        else
+        if (saved is null)
         {
             var sample = AppData.Sample(_clock.UtcNow, _clock.Calendar);
             _tasks = sample.Tasks.ToList().AsReadOnly();
             _projects = sample.Projects.ToList().AsReadOnly();
             SaveNow();
+            // No attachment cleanup: with no data file there's no telling what is still needed.
+            return;
         }
 
-        var referenced = _tasks
-            .SelectMany(t => t.Attachments)
-            .Where(a => a.Kind == AttachmentKind.File)
-            .Select(a => a.Location)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        Attachments.RemoveFiles(referenced);
+        // A blank task here is a draft left behind when the app quit.
+        _tasks = saved.Tasks.Where(t => !t.IsBlank).ToList().AsReadOnly();
+        _projects = saved.Projects.ToList().AsReadOnly();
+        _reminders.Sync(_tasks, _projects);
+        // Cleaning up only at launch keeps undo of a removed attachment safe for the whole session.
+        if (BackUpIfNewDay()) RemoveUnusedAttachments();
+    }
+
+    /// <summary>Makes today's backup if there isn't one yet, from the file as it stands. Returns whether it did.</summary>
+    private bool BackUpIfNewDay()
+    {
+        try
+        {
+            if (_fileStore.BackUpDataFile(_clock.UtcNow, _clock.Calendar) is null) return false;
+            _fileStore.PruneBackups(RetentionDays);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            AppLog.Error("Couldn't back up tasks", ex);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Removes stored files nothing needs any more: not the data file, not a backup, and not attached recently.
+    /// When what's needed can't be established, removes nothing.
+    /// </summary>
+    private void RemoveUnusedAttachments()
+    {
+        if (_fileStore.ReferencedAttachmentPaths() is not { } referenced) return;
+        var cutoff = _clock.Calendar.AddDays(_clock.UtcNow, -RetentionDays);
+        Attachments.RemoveFiles(referenced, DatedFolder.Name(cutoff, _clock.Calendar));
+    }
+
+    /// <summary>Keeps whatever is already showing: the first problem is usually the one that matters.</summary>
+    private void Show(string title, string message)
+    {
+        if (Alert is not null) return;
+        Alert = new StoreAlert(title, message);
+        AlertRaised?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>
@@ -395,19 +474,24 @@ public sealed class TaskStore
     private void RecoverFromUnreadableFile()
     {
         var folder = _fileStore.Directory;
+        const string backups = "Copies from recent days are in its Backups folder.";
         try
         {
             var moved = _fileStore.QuarantineDataFile(_clock.UtcNow);
-            LoadIssue = "Your saved tasks couldn’t be read, so a fresh list was started. "
-                + $"The original file was kept as “{Path.GetFileName(moved)}” in {folder}.";
+            Show(
+                "Couldn’t open your tasks",
+                "Your saved tasks couldn’t be read, so a fresh list was started. "
+                    + $"The original file was kept as “{Path.GetFileName(moved)}” in {folder}. {backups}");
         }
         catch (Exception ex)
         {
             AppLog.Error("Couldn't move the unreadable file aside", ex);
             _canSave = false;
-            LoadIssue = "Your saved tasks couldn’t be read, and the file couldn’t be set aside. "
-                + "To protect it, changes won’t be saved until TodoApp is restarted. "
-                + $"The file is tasks.json in {folder}.";
+            Show(
+                "Couldn’t open your tasks",
+                "Your saved tasks couldn’t be read, and the file couldn’t be set aside. "
+                    + "To protect it, changes won’t be saved until TodoApp is restarted. "
+                    + $"The file is tasks.json in {folder}. {backups}");
         }
     }
 
@@ -422,13 +506,24 @@ public sealed class TaskStore
         _saveDebouncer.Cancel();
         if (_canSave)
         {
+            // Before writing, so the backup holds the data as the day began, even if the app has been open since
+            // yesterday.
+            BackUpIfNewDay();
             try
             {
                 _fileStore.Save(new AppData(AppData.CurrentVersion, _projects, _tasks));
+                _saveFailureReported = false;
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 AppLog.Error("Couldn't save tasks", ex);
+                if (!_saveFailureReported)
+                {
+                    _saveFailureReported = true;
+                    Show(
+                        "Couldn’t save your tasks",
+                        $"Recent changes aren’t on disk yet. TodoApp will keep trying as you make changes. {ex.Message}");
+                }
             }
         }
 

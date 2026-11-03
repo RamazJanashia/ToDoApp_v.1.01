@@ -35,7 +35,10 @@ public static class Dialogs
         }
     }
 
-    /// <summary>"Delete “Name”?" with Delete Project and Cancel; confirming deletes it (its tasks move to the Inbox).</summary>
+    /// <summary>
+    /// "Delete “Name”?" with Delete Project and Cancel; confirming deletes it. What's under it moves up a level, as the
+    /// message says.
+    /// </summary>
     public static async Task ConfirmProjectDeletionAsync(XamlRoot xamlRoot, AppState state, Project project)
     {
         ArgumentNullException.ThrowIfNull(state);
@@ -47,7 +50,7 @@ public static class Dialogs
             Content = new TextBlock
             {
                 Style = (Style)Application.Current.Resources["BodyText"],
-                Text = "Its tasks will move to the Inbox. You can undo this with Ctrl+Z.",
+                Text = state.ProjectDeletionMessage(project),
                 TextWrapping = TextWrapping.Wrap,
             },
             PrimaryButtonText = "Delete Project",

@@ -29,29 +29,40 @@
         <ColumnDefinition Width="Auto" />
       </Grid.ColumnDefinitions>
 
+      <!-- Top-aligned: a long title wraps rather than being cut, and the circle stays by its first line. -->
       <local:CheckCircle
           x:Name="Check"
-          VerticalAlignment="Center"
+          VerticalAlignment="Top"
           OpenBrush="{ThemeResource CheckboxFillBrush}"
           OpenHoverBrush="{ThemeResource CheckboxHoverBrush}"
           DoneBrush="{ThemeResource GreenBrush}"
           TickBrush="{ThemeResource BackgroundBrush}" />
 
       <!-- 14 to the circle; 14 + a 12 minimum spacer + 14 to the details button. -->
-      <StackPanel Grid.Column="1" Margin="14,0,26,0" VerticalAlignment="Center">
-        <TextBlock x:Name="TitleText" Style="{StaticResource RowTitleText}" MaxLines="1" TextTrimming="CharacterEllipsis" />
+      <StackPanel Grid.Column="1" Margin="14,0,26,0" VerticalAlignment="Top">
+        <TextBlock x:Name="TitleText" Style="{StaticResource RowTitleText}" TextWrapping="Wrap" />
         <local:MetaLine
             x:Name="Meta"
             Margin="0,4,0,0"
             TextBrush="{ThemeResource SecondaryTextBrush}"
             OverdueBrush="{ThemeResource RedBrush}" />
+        <!-- How far the subtasks have come; only for a task with subtasks. -->
+        <local:ProgressLine
+            x:Name="SubtaskProgress"
+            Width="220"
+            HorizontalAlignment="Left"
+            Margin="0,7,0,0"
+            Visibility="Collapsed"
+            TrackBrush="{ThemeResource TrackBrush}"
+            FillBrush="{ThemeResource GreenBrush}" />
       </StackPanel>
 
       <Button
           x:Name="DetailsButton"
           Grid.Column="2"
           Style="{StaticResource IconButtonStyle}"
-          VerticalAlignment="Center"
+          VerticalAlignment="Top"
+          Margin="0,-4,0,0"
           IsTabStop="False"
           Opacity="0"
           IsHitTestVisible="False"
@@ -61,8 +72,8 @@
       <local:PriorityFlag
           x:Name="Flag"
           Grid.Column="3"
-          Margin="14,0,0,0"
-          VerticalAlignment="Center"
+          Margin="14,2,0,0"
+          VerticalAlignment="Top"
           RedBrush="{ThemeResource RedBrush}"
           PriorityMediumBrush="{ThemeResource PriorityMediumBrush}"
           PriorityLowBrush="{ThemeResource PriorityLowBrush}"

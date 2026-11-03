@@ -29,8 +29,9 @@
 
       <!-- Text -->
       <SolidColorBrush x:Key="PrimaryTextBrush" Color="#EDFFFFFF" />      <!-- ink 0.93 -->
-      <SolidColorBrush x:Key="SecondaryTextBrush" Color="#8CFFFFFF" />    <!-- ink 0.55 -->
-      <SolidColorBrush x:Key="TertiaryTextBrush" Color="#54FFFFFF" />     <!-- ink 0.33 -->
+      <!-- Secondary and tertiary both reach 4.5:1 (WCAG AA) on every surface. -->
+      <SolidColorBrush x:Key="SecondaryTextBrush" Color="#9EFFFFFF" />    <!-- ink 0.62 -->
+      <SolidColorBrush x:Key="TertiaryTextBrush" Color="#7AFFFFFF" />     <!-- ink 0.48 -->
 
       <!-- Controls -->
       <SolidColorBrush x:Key="CheckboxFillBrush" Color="#99FFFFFF" />     <!-- ink 0.6 -->
@@ -87,8 +88,9 @@
 
       <!-- Text -->
       <SolidColorBrush x:Key="PrimaryTextBrush" Color="#DE000000" />      <!-- ink 0.87 -->
-      <SolidColorBrush x:Key="SecondaryTextBrush" Color="#85000000" />    <!-- ink 0.52 -->
-      <SolidColorBrush x:Key="TertiaryTextBrush" Color="#52000000" />     <!-- ink 0.32 -->
+      <!-- Secondary and tertiary both reach 4.5:1 (WCAG AA) on every surface. -->
+      <SolidColorBrush x:Key="SecondaryTextBrush" Color="#9E000000" />    <!-- ink 0.62 -->
+      <SolidColorBrush x:Key="TertiaryTextBrush" Color="#8C000000" />     <!-- ink 0.55 -->
 
       <!-- Controls -->
       <SolidColorBrush x:Key="CheckboxFillBrush" Color="#38000000" />     <!-- ink 0.22 -->

@@ -41,11 +41,14 @@ public sealed record RecurrenceRule(RecurrenceFrequency Frequency, int Interval,
 {
     private static readonly int[] WeekdayDays = { 2, 3, 4, 5, 6 };
 
-    /// <summary>Clamps the interval to at least 1 and keeps only distinct weekdays 1…7, sorted.</summary>
+    /// <summary>Far beyond anything the editor offers; keeps date arithmetic safe from a hand-edited file.</summary>
+    public const int MaximumInterval = 999;
+
+    /// <summary>Clamps the interval to 1…<see cref="MaximumInterval"/> and keeps only distinct weekdays 1…7, sorted.</summary>
     public static RecurrenceRule Create(RecurrenceFrequency frequency, int interval = 1, IEnumerable<int>? weekdays = null) =>
         new(
             frequency,
-            Math.Max(1, interval),
+            Math.Clamp(interval, 1, MaximumInterval),
             new ValueList<int>((weekdays ?? Array.Empty<int>()).Where(d => d is >= 1 and <= 7).Distinct().OrderBy(d => d)));
 
     public static RecurrenceRule Daily { get; } = Create(RecurrenceFrequency.Daily);

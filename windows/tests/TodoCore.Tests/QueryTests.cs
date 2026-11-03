@@ -26,8 +26,69 @@ public class QueryTests
         query.Run(tasks, Array.Empty<Project>(), Now, Berlin).Select(t => t.Title).ToList();
 
     [Fact]
-    public void Inbox_OpenFirstTodaysCompletionsKeptOldOnesHidden() =>
-        Assert.Equal(new[] { "Inbox open", "Next week", "Inbox done today" }, Titles(new TaskQuery(TaskScope.Inbox)));
+    public void AllOpen_OpenFromEverywhereThenTodaysCompletions() =>
+        Assert.Equal(
+            new[] { "Inbox open", "Due today", "Overdue", "Tomorrow", "Next week", "Inbox done today" },
+            Titles(new TaskQuery(TaskScope.AllOpen)));
+
+    private static readonly Project Parent = new() { Name = "Parent" };
+    private static readonly Project Child = new() { Name = "Child", ParentId = Parent.Id };
+    private static readonly Project Loner = new() { Name = "Loner" };
+
+    [Fact]
+    public void ProjectsScope_IncludesSubprojects()
+    {
+        var tree = new[] { Parent, Child, Loner };
+        var tasks = new List<TaskItem>
+        {
+            new() { Title = "In child", ProjectId = Child.Id },
+            new() { Title = "In parent", ProjectId = Parent.Id },
+            new() { Title = "Elsewhere", ProjectId = Loner.Id },
+        };
+        var nested = TaskScope.Projects(tree.SubtreeIds(Parent.Id));
+
+        Assert.Equal(
+            new HashSet<string> { "In child", "In parent" },
+            new TaskQuery(nested).Run(tasks, tree, Now, Berlin).Select(t => t.Title).ToHashSet());
+        Assert.Equal(2, TaskQuery.OpenCount(nested, tasks, Now, Berlin));
+    }
+
+    private static readonly List<TaskItem> History = new()
+    {
+        new() { Title = "Open", ProjectId = Work.Id, SortOrder = 1 },
+        new() { Title = "Done today", Status = TaskStatus.Done, ProjectId = Work.Id, SortOrder = 2, CompletedAt = Now },
+        new() { Title = "Done earlier", Status = TaskStatus.Done, ProjectId = Work.Id, SortOrder = 3, CompletedAt = D(2026, 10, 15, 9) },
+        new() { Title = "Done earlier later", Status = TaskStatus.Done, ProjectId = Work.Id, SortOrder = 4, CompletedAt = D(2026, 10, 15, 18) },
+        new() { Title = "Other project", Status = TaskStatus.Done, ProjectId = Guid.NewGuid(), SortOrder = 5, CompletedAt = Now },
+    };
+
+    private static List<string> HistoryTitles(TaskQuery query) =>
+        query.Run(History, new[] { Work }, Now, Berlin).Select(t => t.Title).ToList();
+
+    [Fact]
+    public void History_OffByDefault() =>
+        Assert.DoesNotContain("Done earlier", HistoryTitles(new TaskQuery(TaskScope.Project(Work.Id))));
+
+    [Fact]
+    public void History_BringsInOldCompletionsForThisProjectOnly()
+    {
+        var titles = HistoryTitles(new TaskQuery(TaskScope.Project(Work.Id), IncludesCompletedHistory: true));
+        Assert.Equal(4, titles.Count);
+        Assert.DoesNotContain("Other project", titles);
+    }
+
+    [Fact]
+    public void History_HiddenWhenShowCompletedOff() =>
+        Assert.Equal(
+            new[] { "Open" },
+            HistoryTitles(new TaskQuery(TaskScope.Project(Work.Id), ShowCompleted: false, IncludesCompletedHistory: true)));
+
+    [Fact]
+    public void NextWeek_IsComingMonday()
+    {
+        Assert.Equal(D(2026, 10, 26), DueDateText.NextWeek(Now, Berlin));
+        Assert.Equal(D(2026, 11, 2), DueDateText.NextWeek(D(2026, 10, 26, 9), Berlin));
+    }
 
     [Fact]
     public void Today_IncludesOverdue() =>
@@ -49,7 +110,7 @@ public class QueryTests
 
     [Fact]
     public void HideCompleted() =>
-        Assert.DoesNotContain("Inbox done today", Titles(new TaskQuery(TaskScope.Inbox, ShowCompleted: false)));
+        Assert.DoesNotContain("Inbox done today", Titles(new TaskQuery(TaskScope.AllOpen, ShowCompleted: false)));
 
     [Fact]
     public void PrioritySort() =>

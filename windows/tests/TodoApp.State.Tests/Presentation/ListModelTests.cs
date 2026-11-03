@@ -25,7 +25,7 @@ public sealed class ListModelTests : IDisposable
             "Today" => SidebarItem.Today,
             "Upcoming" => SidebarItem.Upcoming,
             "Completed" => SidebarItem.Completed,
-            "Inbox" => SidebarItem.Inbox,
+            "Inbox" => SidebarItem.AllTasks,
             _ => SidebarItem.Dashboard,
         });
 
@@ -57,7 +57,7 @@ public sealed class ListModelTests : IDisposable
     [Fact]
     public void EmptyState_IsHiddenWhileComposingOrWhenThereAreTasks()
     {
-        _f.State.Select(SidebarItem.Inbox);
+        _f.State.Select(SidebarItem.AllTasks);
         Assert.NotNull(Build().Empty);
 
         _f.State.IsComposing = true;
@@ -71,7 +71,7 @@ public sealed class ListModelTests : IDisposable
     [Fact]
     public void CanCompose_IsFalseOnCompletedAndWhileSearching()
     {
-        _f.State.Select(SidebarItem.Inbox);
+        _f.State.Select(SidebarItem.AllTasks);
         Assert.True(Build().CanCompose);
 
         _f.State.Select(SidebarItem.Today);
@@ -80,7 +80,7 @@ public sealed class ListModelTests : IDisposable
         _f.State.Select(SidebarItem.Completed);
         Assert.False(Build().CanCompose);
 
-        _f.State.Select(SidebarItem.Inbox);
+        _f.State.Select(SidebarItem.AllTasks);
         _f.State.SearchText = "x";
         Assert.False(Build().CanCompose);
     }
@@ -118,7 +118,7 @@ public sealed class ListModelTests : IDisposable
         _f.Store.ToggleCompleted(done.Id);
         _f.Store.UpdateTask(done.Id, null, t => t with { Priority = Priority.High });
         _f.Store.CreateTask("");
-        _f.State.Select(SidebarItem.Inbox);
+        _f.State.Select(SidebarItem.AllTasks);
 
         var rows = Build().Sections.Single().Rows;
 
@@ -139,7 +139,7 @@ public sealed class ListModelTests : IDisposable
         _f.State.Select(SidebarItem.Today);
         Assert.Null(Build().Sections.Single().Rows.Single(r => r.Id == task.Id).Meta.DueText);
 
-        _f.State.Select(SidebarItem.Inbox);
+        _f.State.Select(SidebarItem.AllTasks);
         Assert.Equal("Today", Build().Sections.Single().Rows.Single(r => r.Id == task.Id).Meta.DueText);
 
         // Searching widens the scope to everything, so the date comes back.

@@ -47,15 +47,18 @@ public static class Accelerators
         // Creating and finding
         Add(VirtualKey.N, Ctrl, state.BeginNewTask);
         Add(VirtualKey.N, CtrlShift, () => state.RequestProjectEditor(null));
-        Add(VirtualKey.F, Ctrl, state.FocusSearch);
+        Add(VirtualKey.F, Ctrl, () =>
+        {
+            if (state.Shows(WorkspaceElement.ToolbarSearch)) state.FocusSearch();
+        });
         Add(Comma, Ctrl, window.ShowSettings);
 
         // The selected task
         Add(VirtualKey.Enter, Ctrl, () => WithTask(_ => state.ToggleSelectedCompleted()));
         Add(VirtualKey.E, Ctrl, () => WithTask(id => state.RevealInInspector(id, focusTitle: true)));
         Add(VirtualKey.D, Ctrl, () => WithTask(_ => state.DuplicateSelected()));
-        Add(VirtualKey.T, Ctrl, () => WithTask(id => state.SetDueOffset(0, id)));
-        Add(VirtualKey.T, CtrlShift, () => WithTask(id => state.SetDueOffset(1, id)));
+        Add(VirtualKey.T, Ctrl, () => WithTask(id => state.SetDue(QuickDue.Today, new[] { id })));
+        Add(VirtualKey.T, CtrlShift, () => WithTask(id => state.SetDue(QuickDue.Tomorrow, new[] { id })));
         // Ctrl+Shift+3 / 2 / 1 / 0: High, Medium, Low, No Priority (Alt+1…5 are the Go menu).
         foreach (var priority in Priorities.Descending)
         {
@@ -64,18 +67,24 @@ public static class Accelerators
         }
 
         // Views and panels
-        Add(VirtualKey.Number1, Ctrl, () => state.ViewMode = ViewMode.List);
-        Add(VirtualKey.Number2, Ctrl, () => state.ViewMode = ViewMode.Board);
-        Add(VirtualKey.Number3, Ctrl, () => state.ViewMode = ViewMode.Calendar);
+        // A view or place switched off in Settings has no shortcut either, as its menu item is disabled.
+        foreach (var mode in Enum.GetValues<ViewMode>())
+        {
+            Add(VirtualKey.Number1 + (int)mode, Ctrl, () =>
+            {
+                if (state.Shows(mode.Element())) state.ViewMode = mode;
+            });
+        }
+
         Add(VirtualKey.S, CtrlShift, () => state.IsSidebarVisible = !state.IsSidebarVisible);
         Add(VirtualKey.I, CtrlShift, () => state.IsInspectorVisible = !state.IsInspectorVisible);
 
-        // Go: Inbox, Today, Upcoming, Completed, Dashboard
-        SidebarItem[] places = [SidebarItem.Inbox, SidebarItem.Today, SidebarItem.Upcoming, SidebarItem.Completed, SidebarItem.Dashboard];
+        // Go: All Tasks, Today, Upcoming, Completed, Dashboard
+        SidebarItem[] places = [SidebarItem.AllTasks, SidebarItem.Today, SidebarItem.Upcoming, SidebarItem.Completed, SidebarItem.Dashboard];
         for (var i = 0; i < places.Length; i++)
         {
             var place = places[i];
-            Add(VirtualKey.Number1 + i, VirtualKeyModifiers.Menu, () => state.Select(place));
+            Add(VirtualKey.Number1 + i, VirtualKeyModifiers.Menu, () => state.SelectIfShown(place));
         }
 
         // Undo and redo

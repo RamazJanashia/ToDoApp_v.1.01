@@ -19,14 +19,20 @@ public sealed record DashboardModel(
     string CompletionText,
     IReadOnlyList<MetricModel> Metrics,
     IReadOnlyList<UpNextRowModel> UpNext,
-    IReadOnlyList<PriorityBarModel> Priorities)
+    IReadOnlyList<PriorityBarModel> Priorities,
+    IReadOnlySet<WorkspaceElement> Hidden)
 {
+    /// <summary>Whether a dashboard section is switched on in Settings.</summary>
+    public bool Shows(WorkspaceElement element) => !Hidden.Contains(element);
+
     public static DashboardModel Build(AppState s)
     {
         ArgumentNullException.ThrowIfNull(s);
         var now = s.Clock.UtcNow;
         var calendar = s.Clock.Calendar;
-        var stats = new DashboardStats(s.Store.Tasks, s.Store.Projects, now, calendar);
+        // Projects in sidebar order, parents above their sub-projects.
+        var projects = s.Store.Projects.Outline().Select(row => row.Project).ToList();
+        var stats = new DashboardStats(s.Store.Tasks, projects, now, calendar);
 
         var date = calendar.ToLocal(now).ToString("dddd, MMMM d", CultureInfo.CurrentCulture);
         var percent = (int)Math.Round(stats.CompletionRate * 100, MidpointRounding.AwayFromZero);
@@ -41,7 +47,7 @@ public sealed record DashboardModel(
 
         var upNext = stats.UpNext.Select(task => new UpNextRowModel(
             task.Id,
-            task.Title.Length == 0 ? "Untitled" : task.Title,
+            task.DisplayTitle,
             s.Store.FindProject(task.ProjectId)?.Name,
             task.DueDate is { } due ? DueDateText.Label(due, task.HasDueTime, now, calendar) : null,
             task.IsOverdue(now, calendar),
@@ -63,6 +69,7 @@ public sealed record DashboardModel(
             $"{percent}% of all tasks complete",
             metrics,
             upNext,
-            priorities);
+            priorities,
+            s.HiddenElements.ToHashSet());
     }
 }

@@ -55,6 +55,9 @@ public sealed class OptionItem
 
     public Action? Invoke { get; private init; }
 
+    /// <summary>How far the whole line is moved in, e.g. 14 px per level for a sub-project.</summary>
+    public double Indent { get; private init; }
+
     public static OptionItem Choice(
         string title,
         Action invoke,
@@ -62,7 +65,8 @@ public sealed class OptionItem
         bool isSelected = false,
         string iconToken = "Secondary",
         ProjectColor? iconProjectColor = null,
-        string? shortcut = null) =>
+        string? shortcut = null,
+        double indent = 0) =>
         new(OptionKind.Choice, title)
         {
             Invoke = invoke,
@@ -71,6 +75,7 @@ public sealed class OptionItem
             IconToken = iconToken,
             IconProjectColor = iconProjectColor,
             Shortcut = shortcut,
+            Indent = indent,
         };
 
     public static OptionItem Separator() => new(OptionKind.Separator, string.Empty);
@@ -262,6 +267,7 @@ public partial class OptionList : StackPanel
         {
             Content = grid,
             Height = 30,
+            Margin = new Thickness(item.Indent, 0, 0, 0),
             Padding = new Thickness(10, 0, 10, 0),
             CornerRadius = new CornerRadius(6),
             BorderThickness = new Thickness(0),

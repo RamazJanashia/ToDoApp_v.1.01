@@ -21,7 +21,7 @@ public sealed record BoardModel(IReadOnlyList<BoardColumnModel> Columns)
                 status.Title(),
                 StatusIcon(status),
                 tasks.Where(t => t.Status == status)
-                    .Select(t => TaskMeta.Row(t, s.Store, s.SelectedTaskId, false, now, calendar))
+                    .Select(t => TaskMeta.Row(t, s, false, now, calendar))
                     .ToList(),
                 status == TaskStatus.Done ? "Drop finished work here" : "No tasks"))
             .ToList();

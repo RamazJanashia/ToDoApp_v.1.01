@@ -79,8 +79,11 @@ public sealed class DashboardStats
         Projects = projects
             .Select(project =>
             {
-                perProject.TryGetValue(project.Id, out var entry);
-                return new ProjectProgress(project, entry.Done, entry.Total);
+                // A project includes its sub-projects, as it does in the sidebar and on its own page.
+                var branch = projects.SubtreeIds(project.Id)
+                    .Select(id => perProject.GetValueOrDefault(id))
+                    .ToList();
+                return new ProjectProgress(project, branch.Sum(e => e.Done), branch.Sum(e => e.Total));
             })
             .ToList();
 
