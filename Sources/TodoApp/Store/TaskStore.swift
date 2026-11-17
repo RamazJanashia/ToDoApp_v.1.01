@@ -36,6 +36,8 @@ final class TaskStore: ObservableObject {
     /// One alert per run of failures, not one per save.
     private var saveFailureReported = false
     private var pendingSave: DispatchWorkItem?
+    /// Saves are encoded and written here, in order, so they never hold up the window.
+    private let saveQueue = DispatchQueue(label: "local.todoapp.TodoApp.save", qos: .utility)
     private var terminationObserver: NSObjectProtocol?
     private let logger = Logger(subsystem: "local.todoapp.TodoApp", category: "store")
 
@@ -326,15 +328,16 @@ final class TaskStore: ObservableObject {
         projects = saved.projects
         reminders.sync(tasks: tasks, projects: projects)
         // Cleaning up only at launch keeps undo of a removed attachment safe for the whole session.
-        if backUpIfNewDay() { removeUnusedAttachments() }
+        if Self.backUpIfNewDay(fileStore, logger: logger) { removeUnusedAttachments() }
     }
 
     /// Makes today's backup if there isn't one yet, from the file as it stands. Returns whether it did.
+    /// Static so it can run on the save queue without touching the store.
     @discardableResult
-    private func backUpIfNewDay() -> Bool {
+    private static func backUpIfNewDay(_ fileStore: DataFileStore, logger: Logger) -> Bool {
         do {
             guard try fileStore.backUpDataFile() != nil else { return false }
-            fileStore.pruneBackups(keeping: Self.retentionDays)
+            fileStore.pruneBackups(keeping: retentionDays)
             return true
         } catch {
             logger.error("Couldn't back up tasks: \(error.localizedDescription, privacy: .public)")
@@ -391,29 +394,59 @@ final class TaskStore: ObservableObject {
 
     private func didChange() {
         pendingSave?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.saveNow() }
+        let work = DispatchWorkItem { [weak self] in self?.save(waitUntilWritten: false) }
         pendingSave = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
     }
 
+    /// Saves and waits until the file is written: on quit, and wherever the data must be on disk
+    /// before going on. Edits save themselves in the background a moment after the last change.
     func saveNow() {
+        save(waitUntilWritten: true)
+    }
+
+    private func save(waitUntilWritten: Bool) {
         pendingSave?.cancel()
         pendingSave = nil
         if canSave {
-            // Before writing, so the backup holds the data as the day began, even if the app
-            // has been open since yesterday.
-            backUpIfNewDay()
-            do {
-                try fileStore.save(AppData(projects: projects, tasks: tasks))
-                saveFailureReported = false
-            } catch {
-                logger.error("Couldn't save tasks: \(error.localizedDescription, privacy: .public)")
-                if !saveFailureReported {
-                    saveFailureReported = true
-                    show("Couldn’t save your tasks", "Recent changes aren’t on disk yet. TodoApp will keep trying as you make changes. \(error.localizedDescription)")
+            // Encoding takes long enough to drop frames, so it happens on the save queue. The
+            // snapshot is a value, so later edits can't change what this save writes.
+            let snapshot = AppData(projects: projects, tasks: tasks)
+            let fileStore = fileStore
+            let logger = logger
+            let write = { () -> Error? in
+                // Before writing, so the backup holds the data as the day began, even if the app
+                // has been open since yesterday.
+                Self.backUpIfNewDay(fileStore, logger: logger)
+                do {
+                    try fileStore.save(snapshot)
+                    return nil
+                } catch {
+                    return error
+                }
+            }
+            if waitUntilWritten {
+                // Queued saves go first, so this one is always the last word.
+                saveDidFinish(saveQueue.sync(execute: write))
+            } else {
+                saveQueue.async { [weak self] in
+                    let error = write()
+                    DispatchQueue.main.async { self?.saveDidFinish(error) }
                 }
             }
         }
         reminders.sync(tasks: tasks, projects: projects)
+    }
+
+    private func saveDidFinish(_ error: Error?) {
+        guard let error else {
+            saveFailureReported = false
+            return
+        }
+        logger.error("Couldn't save tasks: \(error.localizedDescription, privacy: .public)")
+        if !saveFailureReported {
+            saveFailureReported = true
+            show("Couldn’t save your tasks", "Recent changes aren’t on disk yet. TodoApp will keep trying as you make changes. \(error.localizedDescription)")
+        }
     }
 }

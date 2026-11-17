@@ -80,7 +80,18 @@ final class AppState: ObservableObject {
     }
     /// A blank task created by "+" in the board or calendar, until it gets a title.
     private var draftTaskID: UUID?
-    @Published var searchText = ""
+    /// What's typed in the search field. Not published: the field keeps its own copy, so typing
+    /// doesn't redraw the window.
+    private(set) var searchText = ""
+    /// What the tasks are filtered by: `searchText` once typing pauses, so each keystroke
+    /// doesn't rebuild the list. Clearing applies at once.
+    @Published private(set) var activeSearchText = ""
+    /// Bumped when the search is cleared from outside the field, so the field can catch up.
+    @Published private(set) var searchClearCount = 0
+    private var pendingSearch: DispatchWorkItem?
+    /// Bumped when the selected task should be scrolled into view: keyboard moves and reminders.
+    /// A click needs no scrolling, and scrolling on every change cost a layout of the whole list.
+    @Published private(set) var selectionScrollRequest = 0
     @Published var priorityFilter: Set<Priority> {
         didSet { defaults.set(priorityFilter.map(\.rawValue), forKey: Keys.priorityFilter) }
     }
@@ -164,9 +175,41 @@ final class AppState: ObservableObject {
         store.reminders.onOpenTask = { [weak self] id in self?.reveal(id) }
         startClock()
         // Undo can take away the project on screen. On the next turn, so the store has settled.
+        // Titles show project names, so a renamed project redraws what depends on this state.
         projectWatcher = store.$projects
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.leaveMissingProject() }
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+                self?.leaveMissingProject()
+            }
+    }
+
+    /// From the search field, as the user types.
+    func searchFieldChanged(_ text: String) {
+        guard text != searchText else { return }
+        searchText = text
+        scheduleSearch()
+    }
+
+    /// Ends the search and empties the field.
+    func clearSearch() {
+        guard !searchText.isEmpty || !activeSearchText.isEmpty else { return }
+        searchText = ""
+        scheduleSearch()
+        searchClearCount += 1
+    }
+
+    private func scheduleSearch() {
+        pendingSearch?.cancel()
+        pendingSearch = nil
+        let text = searchText
+        guard !text.trimmingCharacters(in: .whitespaces).isEmpty else {
+            if activeSearchText != text { activeSearchText = text }
+            return
+        }
+        let work = DispatchWorkItem { [weak self] in self?.activeSearchText = text }
+        pendingSearch = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
     }
 
     /// Back to where the user left off, as far as that place and task still exist.
@@ -213,7 +256,7 @@ final class AppState: ObservableObject {
 
     // MARK: - Derived
 
-    var isSearching: Bool { !searchText.trimmingCharacters(in: .whitespaces).isEmpty }
+    var isSearching: Bool { !activeSearchText.trimmingCharacters(in: .whitespaces).isEmpty }
 
     var isDashboard: Bool { sidebarSelection == .dashboard && !isSearching }
 
@@ -232,7 +275,7 @@ final class AppState: ObservableObject {
     var query: TaskQuery {
         TaskQuery(
             scope: scope,
-            searchText: searchText,
+            searchText: activeSearchText,
             priorities: priorityFilter,
             showCompleted: showCompleted || isSearching,
             sort: sort,
@@ -368,7 +411,7 @@ final class AppState: ObservableObject {
     }
 
     func select(_ item: SidebarItem) {
-        searchText = ""
+        clearSearch()
         isComposing = false
         sidebarSelection = item
         if let id = selectedTaskID, !visibleTasks.contains(where: { $0.id == id }) {
@@ -387,7 +430,7 @@ final class AppState: ObservableObject {
     /// Shows a task wherever it lives — used when a reminder is clicked.
     func reveal(_ id: UUID) {
         guard let task = store.task(with: id) else { return }
-        searchText = ""
+        clearSearch()
         // Best place first, skipping any the user has hidden.
         var places: [SidebarItem] = []
         if TaskQuery.belongs(task, to: .today, now: Date(), calendar: .current) { places.append(.today) }
@@ -397,11 +440,13 @@ final class AppState: ObservableObject {
         if let place = places.first(where: { shows($0.element) }) { sidebarSelection = place }
         selectedTaskID = id
         isInspectorVisible = true
+        selectionScrollRequest += 1
     }
 
     func moveSelection(by offset: Int) {
         let ids = navigationOrder.map(\.id)
         guard !ids.isEmpty else { return }
+        defer { selectionScrollRequest += 1 }
         guard let current = selectedTaskID, let index = ids.firstIndex(of: current) else {
             selectedTaskID = offset > 0 ? ids.first : ids.last
             return
@@ -418,7 +463,7 @@ final class AppState: ObservableObject {
     /// ⌘N and the "+" buttons: opens the inline field in list view; elsewhere creates
     /// an untitled task and puts the cursor in its title.
     func beginNewTask() {
-        searchText = ""
+        clearSearch()
         if sidebarSelection == .dashboard || sidebarSelection == .completed {
             sidebarSelection = homeForNewTasks
         }

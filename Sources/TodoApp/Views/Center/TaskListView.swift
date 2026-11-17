@@ -43,8 +43,8 @@ struct TaskListView: View {
             .onChange(of: state.isComposing) { composing in
                 if composing { withAnimation(Theme.Motion.quick) { proxy.scrollTo("composer", anchor: .bottom) } }
             }
-            .onChange(of: state.selectedTaskID) { id in
-                if let id, tasks.contains(where: { $0.id == id }) { proxy.scrollTo(id) }
+            .onChange(of: state.selectionScrollRequest) { _ in
+                if let id = state.selectedTaskID, tasks.contains(where: { $0.id == id }) { proxy.scrollTo(id) }
             }
         }
     }

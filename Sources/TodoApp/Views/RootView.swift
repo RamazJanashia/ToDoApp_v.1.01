@@ -3,7 +3,9 @@ import TodoCore
 
 /// Sidebar · task list · inspector, under a seamless near-black title bar.
 struct RootView: View {
-    @EnvironmentObject private var store: TaskStore
+    /// The store isn't observed here: every edit would rebuild the toolbar and window chrome.
+    /// The columns observe it themselves.
+    private var store: TaskStore { state.store }
     @EnvironmentObject private var state: AppState
     @Environment(\.undoManager) private var undoManager
 
@@ -68,14 +70,7 @@ struct RootView: View {
         } message: {
             Text(deletionMessage)
         }
-        .alert(
-            store.alert?.title ?? "",
-            isPresented: Binding(get: { store.alert != nil }, set: { if !$0 { store.alert = nil } })
-        ) {
-            Button("OK") { store.alert = nil }
-        } message: {
-            Text(store.alert?.message ?? "")
-        }
+        .background(StoreAlertPresenter())
         .onAppear { store.undoManager = undoManager }
         .onChange(of: undoManager) { store.undoManager = $0 }
     }
@@ -165,27 +160,48 @@ struct RootView: View {
     }
 }
 
+/// Shows the store's alerts. A view of its own, so watching for them doesn't redraw the window.
+private struct StoreAlertPresenter: View {
+    @EnvironmentObject private var store: TaskStore
+
+    var body: some View {
+        Color.clear
+            .alert(
+                store.alert?.title ?? "",
+                isPresented: Binding(get: { store.alert != nil }, set: { if !$0 { store.alert = nil } })
+            ) {
+                Button("OK") { store.alert = nil }
+            } message: {
+                Text(store.alert?.message ?? "")
+            }
+    }
+}
+
 /// A compact search field that lives in the title bar. ⌘F focuses it, Escape clears it.
 struct ToolbarSearchField: View {
     @EnvironmentObject private var state: AppState
     @FocusState private var focused: Bool
+    /// Kept here, so a keystroke redraws only the field; the list catches up once typing pauses.
+    @State private var text = ""
 
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 11.5, weight: .medium))
                 .foregroundColor(Theme.tertiaryText)
-            TextField("Search", text: $state.searchText)
+            TextField("Search", text: $text)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
                 .focused($focused)
+                .onChange(of: text) { state.searchFieldChanged($0) }
+                .onChange(of: state.searchClearCount) { _ in text = state.searchText }
                 .onExitCommand {
-                    state.searchText = ""
+                    state.clearSearch()
                     focused = false
                 }
-            if !state.searchText.isEmpty {
+            if !text.isEmpty {
                 Button {
-                    state.searchText = ""
+                    state.clearSearch()
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 11))

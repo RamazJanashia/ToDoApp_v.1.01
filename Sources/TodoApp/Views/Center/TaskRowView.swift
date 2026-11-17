@@ -61,8 +61,9 @@ struct TaskRowView: View {
             state.handleDrop(items, before: task.id, in: siblings)
         } isTargeted: { isDropTarget = $0 }
         .contextMenu { TaskContextMenu(task: task) }
+        // No animation on selection: like Finder and Mail, the highlight moves at once, and
+        // animating it redrew the whole list for every frame.
         .accessibleRow(task.displayTitle, isSelected: isSelected) { state.selectTask(task.id, endEditing: true) }
-        .animation(Theme.Motion.quick, value: isSelected)
     }
 }
 

@@ -3,6 +3,8 @@ import TodoCore
 
 /// The right-hand "Task details" panel. Every edit applies and saves immediately.
 struct InspectorView: View {
+    /// Observed so the panel notices the selected task going away (delete, undo).
+    @EnvironmentObject private var store: TaskStore
     @EnvironmentObject private var state: AppState
 
     var body: some View {

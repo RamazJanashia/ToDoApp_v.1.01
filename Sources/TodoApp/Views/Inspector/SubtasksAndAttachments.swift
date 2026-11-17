@@ -32,8 +32,12 @@ struct SubtasksSection: View {
                     .padding(.bottom, 8)
             }
 
-            ForEach(subtasks) { subtask in
-                SubtaskRow(taskID: taskID, subtask: subtask)
+            // Lazy, so a long checklist only builds the rows on screen.
+            LazyVStack(alignment: .leading, spacing: 0) {
+                ForEach(subtasks) { subtask in
+                    SubtaskRow(store: store, taskID: taskID, subtask: subtask)
+                        .equatable()
+                }
             }
 
             HStack(alignment: .top, spacing: 12) {
@@ -61,13 +65,18 @@ struct SubtasksSection: View {
     }
 }
 
-struct SubtaskRow: View {
-    @EnvironmentObject private var store: TaskStore
-
+/// Holds the store without observing it, and compares by its subtask, so an edit elsewhere
+/// doesn't redraw every row of a long checklist.
+struct SubtaskRow: View, Equatable {
+    let store: TaskStore
     let taskID: UUID
     let subtask: Subtask
 
     @State private var hovering = false
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.store === rhs.store && lhs.taskID == rhs.taskID && lhs.subtask == rhs.subtask
+    }
 
     private var titleBinding: Binding<String> {
         Binding(
@@ -146,7 +155,8 @@ struct AttachmentsSection: View {
             .padding(.bottom, 6)
 
             ForEach(attachments) { attachment in
-                AttachmentRow(taskID: taskID, attachment: attachment)
+                AttachmentRow(store: store, taskID: taskID, attachment: attachment)
+                    .equatable()
             }
 
             if isAddingLink {
@@ -226,13 +236,18 @@ struct AttachmentsSection: View {
     }
 }
 
-struct AttachmentRow: View {
-    @EnvironmentObject private var store: TaskStore
-
+/// Like `SubtaskRow`, redraws only when its attachment changes: drawing it reads the file's
+/// size and kind from disk, which shouldn't happen on every keystroke elsewhere.
+struct AttachmentRow: View, Equatable {
+    let store: TaskStore
     let taskID: UUID
     let attachment: Attachment
 
     @State private var hovering = false
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.store === rhs.store && lhs.taskID == rhs.taskID && lhs.attachment == rhs.attachment
+    }
 
     private var url: URL? { store.attachments.url(for: attachment) }
 

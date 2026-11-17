@@ -2,6 +2,8 @@ import SwiftUI
 import TodoCore
 
 struct CenterView: View {
+    /// Observed so the lists follow edits; the window around them doesn't redraw for every keystroke.
+    @EnvironmentObject private var store: TaskStore
     @EnvironmentObject private var state: AppState
 
     var body: some View {
@@ -38,7 +40,7 @@ struct CenterHeader: View {
     private var subtitle: String {
         let count = tasks.count
         let noun = count == 1 ? "task" : "tasks"
-        if state.isSearching { return "\(count) \(count == 1 ? "result" : "results") for “\(state.searchText.trimmingCharacters(in: .whitespaces))”" }
+        if state.isSearching { return "\(count) \(count == 1 ? "result" : "results") for “\(state.activeSearchText.trimmingCharacters(in: .whitespaces))”" }
         switch state.sidebarSelection {
         case .today:
             return "\(Date().formatted(.dateTime.weekday(.wide).month(.wide).day())) · \(count) \(noun)"

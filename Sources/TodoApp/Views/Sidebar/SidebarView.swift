@@ -218,8 +218,8 @@ struct SidebarRow: View {
             }
             return state.handleDrop(items, on: item)
         } isTargeted: { isDropTarget = $0 && acceptsDrops }
+        // The highlight moves at once, as in the task list.
         .accessibleRow(title, isSelected: isSelected) { state.select(item) }
-        .animation(Theme.Motion.quick, value: isSelected)
     }
 
     private static func projectID(from item: String) -> UUID? {
