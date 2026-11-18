@@ -14,11 +14,14 @@ struct AppCommands: Commands {
                 .keyboardShortcut("n", modifiers: .command)
             Button("New Project…") { state.projectEditor = ProjectEditorRequest(projectID: nil) }
                 .keyboardShortcut("n", modifiers: [.command, .shift])
+            Divider()
+            Button("Show Data Folder") { state.showDataFolder() }
         }
 
         CommandGroup(replacing: .textEditing) {
             Button("Search Tasks") { state.focusSearch() }
                 .keyboardShortcut("f", modifiers: .command)
+                .disabled(!state.shows(.toolbarSearch))
         }
 
         CommandMenu("Task") {
@@ -52,11 +55,11 @@ struct AppCommands: Commands {
             .disabled(selected == nil)
 
             Menu("Due Date") {
-                Button("Today") { setDue(offset: 0) }
+                Button("Today") { setDue(.today) }
                     .keyboardShortcut("t", modifiers: [.command, .option])
-                Button("Tomorrow") { setDue(offset: 1) }
+                Button("Tomorrow") { setDue(.tomorrow) }
                     .keyboardShortcut("t", modifiers: [.command, .option, .shift])
-                Button("Next Week") { setDue(offset: 7) }
+                Button("Next Week") { setDue(.nextWeek) }
                 Divider()
                 Button("Remove Due Date") {
                     if let id = state.selectedTaskID { state.setDueDay(nil, for: [id]) }
@@ -75,6 +78,7 @@ struct AppCommands: Commands {
             ForEach(Array(ViewMode.allCases.enumerated()), id: \.element) { index, mode in
                 Button("as \(mode.title)") { state.viewMode = mode }
                     .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .command)
+                    .disabled(!state.shows(mode.element))
             }
             Divider()
             Button(state.isSidebarVisible ? "Hide Sidebar" : "Show Sidebar") {
@@ -91,19 +95,22 @@ struct AppCommands: Commands {
                     Text(option.title).tag(option)
                 }
             }
+            Button("Customize…") { state.openSettings() }
             Divider()
         }
 
         CommandMenu("Go") {
-            goButton("Inbox", .inbox, key: "1")
+            goButton("All Tasks", .allTasks, key: "1")
             goButton("Today", .today, key: "2")
             goButton("Upcoming", .upcoming, key: "3")
             goButton("Completed", .completed, key: "4")
             goButton("Dashboard", .dashboard, key: "5")
-            if !store.projects.isEmpty {
+            if !store.projects.isEmpty, state.shows(.projects) {
                 Divider()
-                ForEach(store.projects) { project in
-                    Button(project.name) { state.select(.project(project.id)) }
+                ForEach(store.projects.outline()) { row in
+                    Button(String(repeating: "    ", count: row.depth) + row.project.name) {
+                        state.select(.project(row.id))
+                    }
                 }
             }
         }
@@ -112,11 +119,11 @@ struct AppCommands: Commands {
     private func goButton(_ title: String, _ item: SidebarItem, key: Character) -> some View {
         Button(title) { state.select(item) }
             .keyboardShortcut(KeyEquivalent(key), modifiers: [.command, .option])
+            .disabled(!state.shows(item.element))
     }
 
-    private func setDue(offset: Int) {
+    private func setDue(_ due: QuickDue) {
         guard let id = state.selectedTaskID else { return }
-        let today = Calendar.current.startOfDay(for: Date())
-        state.setDueDay(Calendar.current.date(byAdding: .day, value: offset, to: today), for: [id])
+        state.setDue(due, for: [id])
     }
 }

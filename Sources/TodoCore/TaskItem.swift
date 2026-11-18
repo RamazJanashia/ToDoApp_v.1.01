@@ -22,7 +22,8 @@ public struct Attachment: Identifiable, Codable, Hashable, Sendable {
     public var kind: Kind
     /// What the user sees: the original file name, or the link's host.
     public var name: String
-    /// Files: the name of the copy inside the attachments folder. Links: the absolute URL string.
+    /// Files: the copy's path inside the attachments folder ("2026-11-02/<id>-report.pdf", or just the
+    /// file name for files attached before dated folders). Links: the absolute URL string.
     public var location: String
     public var addedAt: Date
 
@@ -54,6 +55,10 @@ public struct TaskItem: Identifiable, Codable, Hashable, Sendable {
     /// Set on a finished repeating task: the occurrence its completion created. Reopening
     /// the task removes that occurrence again if it hasn't been touched.
     public var nextOccurrenceID: UUID?
+    /// The due date and rule that occurrence was created with, to tell whether it has been edited
+    /// since, and to take the rule back if the occurrence has been deleted.
+    public var nextOccurrenceDueDate: Date?
+    public var nextOccurrenceRule: RecurrenceRule?
     public var subtasks: [Subtask]
     public var attachments: [Attachment]
     /// Manual ordering; lower comes first.
@@ -74,6 +79,8 @@ public struct TaskItem: Identifiable, Codable, Hashable, Sendable {
         recurrence: RecurrenceRule? = nil,
         recurrenceDay: Int? = nil,
         nextOccurrenceID: UUID? = nil,
+        nextOccurrenceDueDate: Date? = nil,
+        nextOccurrenceRule: RecurrenceRule? = nil,
         subtasks: [Subtask] = [],
         attachments: [Attachment] = [],
         sortOrder: Double = 0,
@@ -92,6 +99,8 @@ public struct TaskItem: Identifiable, Codable, Hashable, Sendable {
         self.recurrence = recurrence
         self.recurrenceDay = recurrenceDay
         self.nextOccurrenceID = nextOccurrenceID
+        self.nextOccurrenceDueDate = nextOccurrenceDueDate
+        self.nextOccurrenceRule = nextOccurrenceRule
         self.subtasks = subtasks
         self.attachments = attachments
         self.sortOrder = sortOrder
@@ -102,7 +111,7 @@ public struct TaskItem: Identifiable, Codable, Hashable, Sendable {
     // Decoding tolerates missing keys so files written by older versions keep loading.
     private enum CodingKeys: String, CodingKey {
         case id, title, notes, status, priority, projectID, dueDate, hasDueTime, reminderOffset
-        case recurrence, recurrenceDay, nextOccurrenceID, subtasks, attachments, sortOrder, createdAt, completedAt
+        case recurrence, recurrenceDay, nextOccurrenceID, nextOccurrenceDueDate, nextOccurrenceRule, subtasks, attachments, sortOrder, createdAt, completedAt
     }
 
     public init(from decoder: Decoder) throws {
@@ -119,6 +128,8 @@ public struct TaskItem: Identifiable, Codable, Hashable, Sendable {
         recurrence = try c.decodeIfPresent(RecurrenceRule.self, forKey: .recurrence)
         recurrenceDay = try c.decodeIfPresent(Int.self, forKey: .recurrenceDay)
         nextOccurrenceID = try c.decodeIfPresent(UUID.self, forKey: .nextOccurrenceID)
+        nextOccurrenceDueDate = try c.decodeIfPresent(Date.self, forKey: .nextOccurrenceDueDate)
+        nextOccurrenceRule = try c.decodeIfPresent(RecurrenceRule.self, forKey: .nextOccurrenceRule)
         subtasks = try c.decodeIfPresent([Subtask].self, forKey: .subtasks) ?? []
         attachments = try c.decodeIfPresent([Attachment].self, forKey: .attachments) ?? []
         sortOrder = try c.decodeIfPresent(Double.self, forKey: .sortOrder) ?? 0
@@ -128,7 +139,40 @@ public struct TaskItem: Identifiable, Codable, Hashable, Sendable {
 
     public var isCompleted: Bool { status == .done }
 
+    public var displayTitle: String { title.isEmpty ? "Untitled" : title }
+
+    /// Nothing the user wrote: what's left of a draft that was never filled in.
+    public var isBlank: Bool {
+        title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && subtasks.isEmpty && attachments.isEmpty
+    }
+
+    /// A copy with its own identity, which doesn't claim the original's next occurrence.
+    public func duplicated(now: Date = Date()) -> TaskItem {
+        var copy = self
+        copy.id = UUID()
+        copy.createdAt = now
+        copy.nextOccurrenceID = nil
+        copy.nextOccurrenceDueDate = nil
+        copy.nextOccurrenceRule = nil
+        copy.subtasks = subtasks.map { Subtask(title: $0.title, isDone: $0.isDone) }
+        copy.attachments = attachments.map { Attachment(kind: $0.kind, name: $0.name, location: $0.location) }
+        return copy
+    }
+
     public var completedSubtaskCount: Int { subtasks.filter(\.isDone).count }
+
+    /// 0...1. A finished task counts in full; otherwise its share of finished subtasks.
+    public var progress: Double {
+        if isCompleted { return 1 }
+        return subtasks.isEmpty ? 0 : Double(completedSubtaskCount) / Double(subtasks.count)
+    }
+
+    /// Progress across a list, where half the subtasks of a task count as half a task.
+    public static func progress(of tasks: [TaskItem]) -> Double {
+        tasks.isEmpty ? 0 : tasks.reduce(0) { $0 + $1.progress } / Double(tasks.count)
+    }
 
     public mutating func setCompleted(_ completed: Bool, at date: Date = Date()) {
         setStatus(completed ? .done : .todo, at: date)
@@ -197,6 +241,8 @@ public struct TaskItem: Identifiable, Codable, Hashable, Sendable {
         copy.id = UUID()
         copy.recurrenceDay = preferredDay
         copy.nextOccurrenceID = nil
+        copy.nextOccurrenceDueDate = nil
+        copy.nextOccurrenceRule = nil
         copy.status = .todo
         copy.completedAt = nil
         copy.createdAt = now

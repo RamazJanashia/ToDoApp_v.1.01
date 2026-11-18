@@ -10,26 +10,45 @@ import TodoCore
 /// reminder scheduling and undo stay in one place. Changes are written to disk
 /// automatically, a moment after the last edit.
 final class TaskStore: ObservableObject {
+    /// Something the user needs to know that a log line wouldn't tell them.
+    struct Alert {
+        let title: String
+        let message: String
+    }
+
     @Published private(set) var tasks: [TaskItem] = []
     @Published private(set) var projects: [Project] = []
-    /// Set when the saved file couldn't be read at launch; shown once to the user.
-    @Published var loadIssue: String?
+    /// Shown once to the user, then cleared.
+    @Published var alert: Alert?
 
     /// The window's undo manager, handed over by the root view.
     weak var undoManager: UndoManager?
 
-    let reminders = ReminderScheduler()
+    let reminders: ReminderScheduler
     let attachments: AttachmentStorage
 
     private let fileStore: DataFileStore
-    /// False when an unreadable data file couldn't be moved aside: saving would overwrite it.
+    /// The one folder that holds everything: tasks, backups and attachments.
+    var dataDirectory: URL { fileStore.directory }
+    /// False when saving would overwrite a file that must be kept: one that couldn't be moved
+    /// aside, or one from a newer version of the app.
     private var canSave = true
+    /// One alert per run of failures, not one per save.
+    private var saveFailureReported = false
     private var pendingSave: DispatchWorkItem?
+    /// Saves are encoded and written here, in order, so they never hold up the window.
+    private let saveQueue = DispatchQueue(label: "local.todoapp.TodoApp.save", qos: .utility)
     private var terminationObserver: NSObjectProtocol?
     private let logger = Logger(subsystem: "local.todoapp.TodoApp", category: "store")
 
-    init(directory: URL = DataFileStore.defaultDirectory) {
+    /// How long backups are kept, and how long a file attached but no longer used stays around.
+    private static let retentionDays = 30
+
+    /// `remindersEnabled` is off when trying the app on another data folder, because
+    /// notifications belong to the app as a whole, not to one folder.
+    init(directory: URL = DataFileStore.defaultDirectory, remindersEnabled: Bool = true) {
         fileStore = DataFileStore(directory: directory)
+        reminders = ReminderScheduler(enabled: remindersEnabled)
         attachments = AttachmentStorage(directory: directory.appendingPathComponent("Attachments", isDirectory: true))
         // Activate first: it clears old pending reminders, which loading then schedules afresh.
         reminders.activate()
@@ -119,11 +138,7 @@ final class TaskStore: ObservableObject {
     func duplicateTask(_ id: UUID) -> TaskItem? {
         guard let index = tasks.firstIndex(where: { $0.id == id }) else { return nil }
         let original = tasks[index]
-        var copy = original
-        copy.id = UUID()
-        copy.createdAt = Date()
-        copy.subtasks = original.subtasks.map { Subtask(title: $0.title, isDone: $0.isDone) }
-        copy.attachments = original.attachments.map { Attachment(kind: $0.kind, name: $0.name, location: $0.location) }
+        var copy = original.duplicated()
         let following = tasks.map(\.sortOrder).filter { $0 > original.sortOrder }.min()
         copy.sortOrder = following.map { (original.sortOrder + $0) / 2 } ?? original.sortOrder + 1
         undoable("Duplicate Task") {
@@ -136,10 +151,7 @@ final class TaskStore: ObservableObject {
     /// tidying up after an abandoned draft, not an edit the user made.
     func discardIfBlank(_ id: UUID) {
         guard let index = tasks.firstIndex(where: { $0.id == id }) else { return }
-        let task = tasks[index]
-        guard task.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              task.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              task.subtasks.isEmpty, task.attachments.isEmpty else { return }
+        guard tasks[index].isBlank else { return }
         tasks.remove(at: index)
         didChange()
     }
@@ -153,29 +165,48 @@ final class TaskStore: ObservableObject {
 
     /// Places `id` directly before `targetID` within `ordered` (the list as the user sees it).
     func moveTask(_ id: UUID, before targetID: UUID, in ordered: [TaskItem]) {
-        guard let newOrder = TaskOperations.sortOrder(placing: id, before: targetID, in: ordered) else { return }
-        updateTask(id, undoName: "Move Task") { $0.sortOrder = newOrder }
+        guard TaskOperations.sortOrder(placing: id, before: targetID, in: ordered) != nil else { return }
+        undoable("Move Task") {
+            TaskOperations.move(id, before: targetID, in: ordered, tasks: &tasks)
+        }
     }
 
     // MARK: - Attachments
 
+    /// Copies in the background, because attachments can be large enough to freeze the window.
     func attachFiles(_ urls: [URL], to taskID: UUID) {
-        var added: [Attachment] = []
-        for url in urls where url.isFileURL {
-            do {
-                added.append(try attachments.importFile(at: url))
-            } catch {
-                logger.error("Couldn't attach \(url.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)")
+        let files = urls.filter(\.isFileURL)
+        guard !files.isEmpty else { return }
+        let storage = attachments
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            var added: [Attachment] = []
+            var failed: [(name: String, reason: String)] = []
+            for url in files {
+                do {
+                    added.append(try storage.importFile(at: url))
+                } catch {
+                    failed.append((url.lastPathComponent, error.localizedDescription))
+                }
+            }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                if !added.isEmpty {
+                    self.updateTask(taskID, undoName: "Add Attachment") { $0.attachments.append(contentsOf: added) }
+                }
+                for failure in failed {
+                    self.logger.error("Couldn't attach \(failure.name, privacy: .public): \(failure.reason, privacy: .public)")
+                }
+                if !failed.isEmpty {
+                    self.show("Couldn’t attach a file", "\(failed.map(\.name).joined(separator: ", ")) couldn’t be copied. \(failed[0].reason)")
+                }
             }
         }
-        guard !added.isEmpty else { return }
-        updateTask(taskID, undoName: "Add Attachment") { $0.attachments.append(contentsOf: added) }
     }
 
-    /// Returns `false` when the text isn't a usable web address.
+    /// Returns `false` when the text isn't a usable web or mail address.
     @discardableResult
     func attachLink(_ text: String, to taskID: UUID) -> Bool {
-        guard let attachment = AttachmentStorage.link(from: text) else { return false }
+        guard let attachment = AttachmentLink.attachment(from: text) else { return false }
         updateTask(taskID, undoName: "Add Link") { $0.attachments.append(attachment) }
         return true
     }
@@ -189,8 +220,8 @@ final class TaskStore: ObservableObject {
     // MARK: - Projects
 
     @discardableResult
-    func createProject(name: String, icon: String, color: ProjectColor) -> Project {
-        let project = Project(name: name, icon: icon, color: color)
+    func createProject(name: String, icon: String, color: ProjectColor, parentID: UUID? = nil) -> Project {
+        let project = Project(name: name, icon: icon, color: color, parentID: parentID)
         undoable("New Project") {
             projects.append(project)
         }
@@ -205,24 +236,17 @@ final class TaskStore: ObservableObject {
         undoable("Edit Project") { projects[index] = project }
     }
 
-    /// Deletes the project; its tasks move to the Inbox rather than disappearing.
+    /// Deletes the project; what's under it moves up rather than disappearing.
     func deleteProject(_ id: UUID) {
         undoable("Delete Project") {
-            projects.removeAll { $0.id == id }
-            for index in tasks.indices where tasks[index].projectID == id {
-                tasks[index].projectID = nil
-            }
+            TaskOperations.deleteProject(id, projects: &projects, tasks: &tasks)
         }
     }
 
     func moveProject(_ id: UUID, before targetID: UUID) {
-        guard id != targetID,
-              let from = projects.firstIndex(where: { $0.id == id }) else { return }
-        undoable("Move Project") {
-            let project = projects.remove(at: from)
-            let to = projects.firstIndex(where: { $0.id == targetID }) ?? projects.endIndex
-            projects.insert(project, at: to)
-        }
+        var reordered = projects
+        guard reordered.moveProject(id, before: targetID) else { return }
+        undoable("Move Project") { projects = reordered }
     }
 
     // MARK: - Undo
@@ -245,7 +269,10 @@ final class TaskStore: ObservableObject {
         undoManager.registerUndo(withTarget: self) { store in
             let current = Snapshot(tasks: store.tasks, projects: store.projects)
             let live = Dictionary(store.tasks.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-            store.tasks = snapshot.tasks.map { Self.keepingText(of: live[$0.id], in: $0) }
+            // A blank task that's gone is a discarded draft, not something to bring back.
+            store.tasks = snapshot.tasks
+                .filter { !$0.isBlank || live[$0.id] != nil }
+                .map { Self.keepingText(of: live[$0.id], in: $0) }
             store.projects = snapshot.projects
             store.registerRestore(of: current, actionName: actionName)
             store.didChange()
@@ -273,60 +300,153 @@ final class TaskStore: ObservableObject {
         let saved: AppData?
         do {
             saved = try fileStore.load()
+        } catch DataFileError.newerFormat(let version) {
+            logger.error("Data file has newer version \(version, privacy: .public)")
+            canSave = false
+            show(
+                "Couldn’t open your tasks",
+                "Your tasks were saved by a newer version of TodoApp. To protect them, changes won’t be saved here. "
+                    + "Please update TodoApp. The file is tasks.json in \(folderDescription)."
+            )
+            return
         } catch {
             logger.error("Couldn't read saved tasks: \(error.localizedDescription, privacy: .public)")
             recoverFromUnreadableFile()
-            // No attachment cleanup here: the unreadable file may still refer to every attachment.
             return
         }
 
-        if let saved {
-            tasks = saved.tasks
-            projects = saved.projects
-            reminders.sync(tasks: tasks, projects: projects)
-        } else {
+        guard let saved else {
             let sample = AppData.sample()
             tasks = sample.tasks
             projects = sample.projects
             saveNow()
+            // No attachment cleanup: with no data file there's no telling what is still needed.
+            return
         }
-        let referenced = Set(tasks.flatMap(\.attachments).filter { $0.kind == .file }.map(\.location))
-        attachments.removeFiles(notIn: referenced)
+        // A blank task here is a draft left behind when the app quit.
+        tasks = saved.tasks.filter { !$0.isBlank }
+        projects = saved.projects
+        reminders.sync(tasks: tasks, projects: projects)
+        // Cleaning up only at launch keeps undo of a removed attachment safe for the whole session.
+        if Self.backUpIfNewDay(fileStore, logger: logger) { removeUnusedAttachments() }
+    }
+
+    /// Makes today's backup if there isn't one yet, from the file as it stands. Returns whether it did.
+    /// Static so it can run on the save queue without touching the store.
+    @discardableResult
+    private static func backUpIfNewDay(_ fileStore: DataFileStore, logger: Logger) -> Bool {
+        do {
+            guard try fileStore.backUpDataFile() != nil else { return false }
+            fileStore.pruneBackups(keeping: retentionDays)
+            return true
+        } catch {
+            logger.error("Couldn't back up tasks: \(error.localizedDescription, privacy: .public)")
+            return false
+        }
+    }
+
+    /// Removes stored files nothing needs any more: not the data file, not a backup, and not
+    /// attached recently. When what's needed can't be established, removes nothing.
+    private func removeUnusedAttachments() {
+        guard let referenced = fileStore.referencedAttachmentPaths() else { return }
+        let cutoff = Calendar.current.date(byAdding: .day, value: -Self.retentionDays, to: Date()) ?? Date()
+        attachments.removeFiles(notIn: referenced, keepingFoldersFrom: DatedFolder.name(for: cutoff))
+    }
+
+    private var folderDescription: String {
+        (fileStore.directory.path as NSString).abbreviatingWithTildeInPath
+    }
+
+    /// Keeps whatever is already showing: the first problem is usually the one that matters.
+    private func show(_ title: String, _ message: String) {
+        if alert == nil { alert = Alert(title: title, message: message) }
     }
 
     /// Sets the unreadable file aside so a fresh list can be saved. If even that fails,
     /// saving is switched off for the session so the original is never overwritten.
     private func recoverFromUnreadableFile() {
-        let folder = "~/Library/Application Support/TodoApp"
+        let backups = "Copies from recent days are in its Backups folder."
         do {
             let moved = try fileStore.quarantineDataFile()
-            loadIssue = "Your saved tasks couldn’t be read, so a fresh list was started. "
-                + "The original file was kept as “\(moved.lastPathComponent)” in \(folder)."
+            show(
+                "Couldn’t open your tasks",
+                "Your saved tasks couldn’t be read, so a fresh list was started. "
+                    + "The original file was kept as “\(moved.lastPathComponent)” in \(folderDescription). \(backups)"
+            )
         } catch {
             logger.error("Couldn't move the unreadable file aside: \(error.localizedDescription, privacy: .public)")
             canSave = false
-            loadIssue = "Your saved tasks couldn’t be read, and the file couldn’t be set aside. "
-                + "To protect it, changes won’t be saved until TodoApp is restarted. "
-                + "The file is tasks.json in \(folder)."
+            show(
+                "Couldn’t open your tasks",
+                "Your saved tasks couldn’t be read, and the file couldn’t be set aside. "
+                    + "To protect it, changes won’t be saved until TodoApp is restarted. "
+                    + "The file is tasks.json in \(folderDescription). \(backups)"
+            )
+        }
+    }
+
+    /// Asks for notification permission when the user sets a reminder, and says so if it's off.
+    func confirmRemindersAllowed() {
+        reminders.requestAuthorizationIfNeeded { [weak self] in
+            self?.show("Reminders are turned off", "Allow notifications for TodoApp in System Settings ▸ Notifications, or this reminder won’t appear.")
         }
     }
 
     private func didChange() {
         pendingSave?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.saveNow() }
+        let work = DispatchWorkItem { [weak self] in self?.save(waitUntilWritten: false) }
         pendingSave = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
     }
 
+    /// Saves and waits until the file is written: on quit, and wherever the data must be on disk
+    /// before going on. Edits save themselves in the background a moment after the last change.
     func saveNow() {
+        save(waitUntilWritten: true)
+    }
+
+    private func save(waitUntilWritten: Bool) {
         pendingSave?.cancel()
         pendingSave = nil
-        guard canSave else { return }
-        do {
-            try fileStore.save(AppData(projects: projects, tasks: tasks))
-        } catch {
-            logger.error("Couldn't save tasks: \(error.localizedDescription, privacy: .public)")
+        if canSave {
+            // Encoding takes long enough to drop frames, so it happens on the save queue. The
+            // snapshot is a value, so later edits can't change what this save writes.
+            let snapshot = AppData(projects: projects, tasks: tasks)
+            let fileStore = fileStore
+            let logger = logger
+            let write = { () -> Error? in
+                // Before writing, so the backup holds the data as the day began, even if the app
+                // has been open since yesterday.
+                Self.backUpIfNewDay(fileStore, logger: logger)
+                do {
+                    try fileStore.save(snapshot)
+                    return nil
+                } catch {
+                    return error
+                }
+            }
+            if waitUntilWritten {
+                // Queued saves go first, so this one is always the last word.
+                saveDidFinish(saveQueue.sync(execute: write))
+            } else {
+                saveQueue.async { [weak self] in
+                    let error = write()
+                    DispatchQueue.main.async { self?.saveDidFinish(error) }
+                }
+            }
         }
         reminders.sync(tasks: tasks, projects: projects)
+    }
+
+    private func saveDidFinish(_ error: Error?) {
+        guard let error else {
+            saveFailureReported = false
+            return
+        }
+        logger.error("Couldn't save tasks: \(error.localizedDescription, privacy: .public)")
+        if !saveFailureReported {
+            saveFailureReported = true
+            show("Couldn’t save your tasks", "Recent changes aren’t on disk yet. TodoApp will keep trying as you make changes. \(error.localizedDescription)")
+        }
     }
 }

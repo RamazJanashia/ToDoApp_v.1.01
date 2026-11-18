@@ -57,6 +57,8 @@ struct IconButton: View {
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
         .help(help)
+        // The help text without its shortcut, e.g. "New Task" from "New Task (⌘N)".
+        .accessibilityLabel(help.components(separatedBy: " (").first ?? help)
     }
 }
 
@@ -71,7 +73,7 @@ struct CheckCircle: View {
 
     var body: some View {
         Button {
-            withAnimation(.spring(response: 0.22, dampingFraction: 0.55)) { pulse = true }
+            withAnimation(Theme.Motion.press) { pulse = true }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
                 withAnimation(Theme.Motion.quick) { pulse = false }
             }
@@ -99,6 +101,7 @@ struct CheckCircle: View {
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
         .help(isDone ? "Mark as Incomplete" : "Complete")
+        .accessibilityLabel(isDone ? "Mark as Incomplete" : "Complete")
         .animation(Theme.Motion.quick, value: isDone)
     }
 }
@@ -137,6 +140,7 @@ struct CheckSquare: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
+        .accessibilityLabel(isDone ? "Mark Subtask as Incomplete" : "Complete Subtask")
     }
 }
 
@@ -257,19 +261,16 @@ struct PopoverSurface<Content: View>: View {
     }
 }
 
-/// Coloured dot + name, used wherever a task shows its project.
-struct ProjectTag: View {
-    let project: Project
-
-    var body: some View {
-        HStack(spacing: 5) {
-            Circle().fill(project.color.color).frame(width: 6, height: 6)
-            Text(project.name).lineLimit(1)
-        }
-    }
-}
-
 extension View {
+    /// Tells VoiceOver that a row built on a tap gesture acts like a button, keeping the
+    /// controls inside it reachable.
+    func accessibleRow(_ label: String, isSelected: Bool = false, action: @escaping () -> Void) -> some View {
+        accessibilityElement(children: .contain)
+            .accessibilityLabel(label)
+            .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+            .accessibilityAction(.default, action)
+    }
+
     /// Subtle rounded highlight for hover and selection.
     func rowHighlight(selected: Bool, hovering: Bool, cornerRadius: CGFloat = 8) -> some View {
         background(

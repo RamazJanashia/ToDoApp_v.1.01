@@ -12,6 +12,7 @@ struct ProjectEditorView: View {
     @State private var name = ""
     @State private var icon = "folder"
     @State private var color: ProjectColor = .blue
+    @State private var parentID: UUID?
     @FocusState private var nameFocused: Bool
 
     private var isNew: Bool { request.projectID == nil }
@@ -19,7 +20,7 @@ struct ProjectEditorView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(isNew ? "New Project" : "Edit Project")
+            Text(isNew ? (request.parentID == nil ? "New Project" : "New Sub-project") : "Edit Project")
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundColor(Theme.primaryText)
 
@@ -36,6 +37,15 @@ struct ProjectEditorView: View {
                     .onSubmit(save)
             }
             .padding(.top, 18)
+
+            SectionHeader("Inside").padding(.top, 22).padding(.bottom, 6)
+            Picker("Inside", selection: $parentID) {
+                Text("Nothing (top level)").tag(UUID?.none)
+                ForEach(store.projects.parentChoices(for: request.projectID)) { row in
+                    Text(String(repeating: "    ", count: row.depth) + row.project.name).tag(UUID?.some(row.id))
+                }
+            }
+            .labelsHidden()
 
             SectionHeader("Color").padding(.top, 22).padding(.bottom, 10)
             HStack(spacing: 10) {
@@ -97,6 +107,10 @@ struct ProjectEditorView: View {
                 name = project.name
                 icon = project.icon
                 color = project.color
+                parentID = project.parentID
+            } else if let parent = store.project(with: request.parentID) {
+                color = parent.color
+                parentID = parent.id
             }
             nameFocused = true
         }
@@ -109,9 +123,10 @@ struct ProjectEditorView: View {
                 project.name = trimmedName
                 project.icon = icon
                 project.color = color
+                project.parentID = parentID
             }
         } else {
-            let project = store.createProject(name: trimmedName, icon: icon, color: color)
+            let project = store.createProject(name: trimmedName, icon: icon, color: color, parentID: parentID)
             state.select(.project(project.id))
         }
         dismiss()

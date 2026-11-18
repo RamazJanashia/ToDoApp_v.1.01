@@ -9,7 +9,12 @@ struct WindowConfigurator: NSViewRepresentable {
         ConfiguringView(onWindow: onWindow)
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {}
+    /// SwiftUI rebuilds the toolbar when its content changes, which drops the flexible space,
+    /// so put it back. On the next turn, once that rebuild has finished.
+    func updateNSView(_ nsView: NSView, context: Context) {
+        guard let window = nsView.window else { return }
+        DispatchQueue.main.async { ConfiguringView.pushTrailingItemsRight(in: window) }
+    }
 
     private final class ConfiguringView: NSView {
         let onWindow: (NSWindow) -> Void

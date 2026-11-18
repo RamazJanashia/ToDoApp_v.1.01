@@ -1,10 +1,11 @@
 import AppKit
+import Combine
 import Foundation
 import SwiftUI
 import TodoCore
 
 enum SidebarItem: Hashable {
-    case inbox
+    case allTasks
     case today
     case upcoming
     case completed
@@ -36,10 +37,27 @@ enum ViewMode: String, CaseIterable, Identifiable {
     }
 }
 
+/// The shortcuts offered wherever a due date can be set.
+enum QuickDue {
+    case today, tomorrow, nextWeek
+
+    var day: Date {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        switch self {
+        case .today: return today
+        case .tomorrow: return calendar.date(byAdding: .day, value: 1, to: today) ?? today
+        case .nextWeek: return DueDateText.nextWeek(calendar: calendar)
+        }
+    }
+}
+
 struct ProjectEditorRequest: Identifiable {
     let id = UUID()
     /// `nil` creates a new project.
     let projectID: UUID?
+    /// Where a new project goes; `nil` for the top level.
+    var parentID: UUID?
 }
 
 /// What the window is showing and the user actions that span several views.
@@ -47,9 +65,12 @@ struct ProjectEditorRequest: Identifiable {
 final class AppState: ObservableObject {
     let store: TaskStore
 
-    @Published var sidebarSelection: SidebarItem = .today
+    @Published var sidebarSelection: SidebarItem = .today {
+        didSet { defaults.set(sidebarSelection.storageKey, forKey: Keys.selection) }
+    }
     @Published var selectedTaskID: UUID? {
         didSet {
+            defaults.set(selectedTaskID?.uuidString, forKey: Keys.selectedTask)
             // Moving on from an untouched draft throws it away instead of leaving "Untitled" behind.
             if let draft = draftTaskID, draft != selectedTaskID {
                 draftTaskID = nil
@@ -59,9 +80,32 @@ final class AppState: ObservableObject {
     }
     /// A blank task created by "+" in the board or calendar, until it gets a title.
     private var draftTaskID: UUID?
-    @Published var searchText = ""
-    @Published var priorityFilter: Set<Priority> = []
-    @Published var isSidebarVisible = true
+    /// What's typed in the search field. Not published: the field keeps its own copy, so typing
+    /// doesn't redraw the window.
+    private(set) var searchText = ""
+    /// What the tasks are filtered by: `searchText` once typing pauses, so each keystroke
+    /// doesn't rebuild the list. Clearing applies at once.
+    @Published private(set) var activeSearchText = ""
+    /// Bumped when the search is cleared from outside the field, so the field can catch up.
+    @Published private(set) var searchClearCount = 0
+    private var pendingSearch: DispatchWorkItem?
+    /// Bumped when the selected task should be scrolled into view: keyboard moves and reminders.
+    /// A click needs no scrolling, and scrolling on every change cost a layout of the whole list.
+    @Published private(set) var selectionScrollRequest = 0
+    @Published var priorityFilter: Set<Priority> {
+        didSet { defaults.set(priorityFilter.map(\.rawValue), forKey: Keys.priorityFilter) }
+    }
+    @Published var isSidebarVisible: Bool {
+        didSet { defaults.set(isSidebarVisible, forKey: Keys.sidebar) }
+    }
+    /// What the user switched off in Settings.
+    @Published private(set) var hiddenElements: Set<WorkspaceElement> {
+        didSet { defaults.set(hiddenElements.map(\.rawValue), forKey: Keys.hidden) }
+    }
+    /// Projects whose sub-projects are folded away in the sidebar.
+    @Published private(set) var collapsedProjects: Set<UUID> {
+        didSet { defaults.set(collapsedProjects.map(\.uuidString), forKey: Keys.collapsed) }
+    }
     @Published var calendarMonth = Date()
     @Published var calendarSelectedDay: Date?
     @Published var projectEditor: ProjectEditorRequest?
@@ -98,6 +142,7 @@ final class AppState: ObservableObject {
 
     private var clockObservers: [NSObjectProtocol] = []
     private var minuteTimer: Timer?
+    private var projectWatcher: AnyCancellable?
 
     private let defaults = UserDefaults.standard
     private enum Keys {
@@ -106,6 +151,12 @@ final class AppState: ObservableObject {
         static let showCompleted = "showCompleted"
         static let inspector = "inspectorVisible"
         static let appearance = "appearance"
+        static let selection = "sidebarSelection"
+        static let selectedTask = "selectedTask"
+        static let sidebar = "sidebarVisible"
+        static let priorityFilter = "priorityFilter"
+        static let hidden = "hiddenElements"
+        static let collapsed = "collapsedProjects"
     }
 
     init(store: TaskStore) {
@@ -115,59 +166,133 @@ final class AppState: ObservableObject {
         showCompleted = defaults.object(forKey: Keys.showCompleted) as? Bool ?? true
         isInspectorVisible = defaults.object(forKey: Keys.inspector) as? Bool ?? true
         appearance = defaults.string(forKey: Keys.appearance).flatMap(AppearancePreference.init(rawValue:)) ?? .system
+        isSidebarVisible = defaults.object(forKey: Keys.sidebar) as? Bool ?? true
+        priorityFilter = Set((defaults.array(forKey: Keys.priorityFilter) as? [Int] ?? []).compactMap(Priority.init(rawValue:)))
+        hiddenElements = Set((defaults.stringArray(forKey: Keys.hidden) ?? []).compactMap(WorkspaceElement.init(rawValue:)))
+        collapsedProjects = Set((defaults.stringArray(forKey: Keys.collapsed) ?? []).compactMap(UUID.init(uuidString:)))
         NSApplication.shared.appearance = appearance.nsAppearance
-        selectedTaskID = TaskQuery(scope: .today).run(on: store.tasks, projects: store.projects).first?.id
+        restoreWorkspace()
         store.reminders.onOpenTask = { [weak self] id in self?.reveal(id) }
         startClock()
+        // Undo can take away the project on screen. On the next turn, so the store has settled.
+        // Titles show project names, so a renamed project redraws what depends on this state.
+        projectWatcher = store.$projects
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+                self?.leaveMissingProject()
+            }
+    }
+
+    /// From the search field, as the user types.
+    func searchFieldChanged(_ text: String) {
+        guard text != searchText else { return }
+        searchText = text
+        scheduleSearch()
+    }
+
+    /// Ends the search and empties the field.
+    func clearSearch() {
+        guard !searchText.isEmpty || !activeSearchText.isEmpty else { return }
+        searchText = ""
+        scheduleSearch()
+        searchClearCount += 1
+    }
+
+    private func scheduleSearch() {
+        pendingSearch?.cancel()
+        pendingSearch = nil
+        let text = searchText
+        guard !text.trimmingCharacters(in: .whitespaces).isEmpty else {
+            if activeSearchText != text { activeSearchText = text }
+            return
+        }
+        let work = DispatchWorkItem { [weak self] in self?.activeSearchText = text }
+        pendingSearch = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
+    }
+
+    /// Back to where the user left off, as far as that place and task still exist.
+    private func restoreWorkspace() {
+        let savedTask = defaults.string(forKey: Keys.selectedTask).flatMap(UUID.init(uuidString:))
+        if let saved = defaults.string(forKey: Keys.selection).flatMap(SidebarItem.init(storageKey:)) {
+            if case .project(let id) = saved, store.project(with: id) == nil {
+                sidebarSelection = .today
+            } else {
+                sidebarSelection = saved
+            }
+        }
+        leaveHiddenPlaces()
+        let visible = visibleTasks
+        selectedTaskID = visible.contains { $0.id == savedTask } ? savedTask : visible.first?.id
     }
 
     /// "Today", overdue colouring and counts are worked out when views draw, so redraw when
     /// the day changes, after sleep, and once a minute for tasks with a time of day.
     private func startClock() {
-        let refresh: (Notification) -> Void = { [weak self] _ in self?.objectWillChange.send() }
+        let refresh: (Notification) -> Void = { [weak self] _ in self?.clockDidTick() }
         for name in [Notification.Name.NSCalendarDayChanged, .NSSystemTimeZoneDidChange] {
             clockObservers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main, using: refresh))
         }
         clockObservers.append(NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main, using: refresh
         ))
-        let timer = Timer(timeInterval: 60, repeats: true) { [weak self] _ in self?.objectWillChange.send() }
+        let timer = Timer(timeInterval: 60, repeats: true) { [weak self] _ in self?.clockDidTick() }
         timer.tolerance = 10
         RunLoop.main.add(timer, forMode: .common)
         minuteTimer = timer
     }
 
+    private func clockDidTick() {
+        objectWillChange.send()
+        store.reminders.resync()
+    }
+
+    private func leaveMissingProject() {
+        if case .project(let id) = sidebarSelection, store.project(with: id) == nil {
+            select(homeForNewTasks)
+        }
+    }
+
     // MARK: - Derived
 
-    var isSearching: Bool { !searchText.trimmingCharacters(in: .whitespaces).isEmpty }
+    var isSearching: Bool { !activeSearchText.trimmingCharacters(in: .whitespaces).isEmpty }
 
     var isDashboard: Bool { sidebarSelection == .dashboard && !isSearching }
 
     var scope: TaskScope {
         if isSearching { return .all }
         switch sidebarSelection {
-        case .inbox: return .inbox
+        case .allTasks: return .allOpen
         case .today: return .today
         case .upcoming: return .upcoming
         case .completed: return .completed
         case .dashboard: return .all
-        case .project(let id): return .project(id)
+        case .project(let id): return .projects(store.projects.subtreeIDs(of: id))
         }
     }
 
     var query: TaskQuery {
         TaskQuery(
             scope: scope,
-            searchText: searchText,
+            searchText: activeSearchText,
             priorities: priorityFilter,
             showCompleted: showCompleted || isSearching,
-            sort: sort
+            sort: sort,
+            includesCompletedHistory: viewMode == .list
         )
     }
 
     /// The tasks the center column lists, in display order.
     var visibleTasks: [TaskItem] {
         query.run(on: store.tasks, projects: store.projects)
+    }
+
+    /// What the header counts and measures: without a project's finished tasks from earlier days.
+    var currentTasks: [TaskItem] {
+        var current = query
+        current.includesCompletedHistory = false
+        return current.run(on: store.tasks, projects: store.projects)
     }
 
     /// Tasks in the order they appear on screen, for the arrow keys and for choosing
@@ -187,7 +312,7 @@ final class AppState: ObservableObject {
     /// Scheduled tasks for the calendar: the selected project's, or everyone's.
     var calendarTasks: [TaskItem] {
         var calendarQuery = query
-        if case .project = calendarQuery.scope {} else { calendarQuery.scope = .all }
+        if case .projects = calendarQuery.scope {} else { calendarQuery.scope = .all }
         calendarQuery.showCompleted = showCompleted
         return calendarQuery.run(on: store.tasks, projects: store.projects).filter { $0.dueDate != nil }
     }
@@ -195,7 +320,7 @@ final class AppState: ObservableObject {
     var title: String {
         if isSearching { return "Search" }
         switch sidebarSelection {
-        case .inbox: return "Inbox"
+        case .allTasks: return "All Tasks"
         case .today: return "Today"
         case .upcoming: return "Upcoming"
         case .completed: return "Completed"
@@ -208,10 +333,85 @@ final class AppState: ObservableObject {
 
     var selectedTask: TaskItem? { store.task(with: selectedTaskID) }
 
+    // MARK: - Customising
+
+    func shows(_ element: WorkspaceElement) -> Bool { !hiddenElements.contains(element) }
+
+    var visibleViewModes: [ViewMode] { ViewMode.allCases.filter { shows($0.element) } }
+
+    /// The one view left can't be switched off: the window would have nothing to show.
+    func canHide(_ element: WorkspaceElement) -> Bool {
+        element.group != .views || !shows(element) || visibleViewModes.count > 1
+    }
+
+    func setVisible(_ visible: Bool, _ element: WorkspaceElement) {
+        guard visible || canHide(element) else { return }
+        if visible { hiddenElements.remove(element) } else { hiddenElements.insert(element) }
+        leaveHiddenPlaces()
+    }
+
+    func showEverything() {
+        hiddenElements = []
+    }
+
+    /// Steps off a view or sidebar place that has just been hidden.
+    private func leaveHiddenPlaces() {
+        if !shows(viewMode.element), let mode = visibleViewModes.first { viewMode = mode }
+        guard !shows(sidebarSelection.element) else { return }
+        let places: [SidebarItem] = [.today, .allTasks, .upcoming, .completed, .dashboard]
+        if let place = places.first(where: { shows($0.element) }) {
+            select(place)
+        } else if shows(.projects), let first = store.projects.outline().first {
+            select(.project(first.id))
+        }
+    }
+
+    func toggleCollapsed(_ projectID: UUID) {
+        if collapsedProjects.remove(projectID) == nil { collapsedProjects.insert(projectID) }
+    }
+
+    func showDataFolder() {
+        NSWorkspace.shared.open(store.dataDirectory)
+    }
+
+    func openSettings() {
+        NSApp.activate(ignoringOtherApps: true)
+        // macOS 14 ignores showSettingsWindow: sent from code, but the menu item always works.
+        if let menu = NSApp.mainMenu?.items.first?.submenu,
+           let index = menu.items.firstIndex(where: { $0.keyEquivalent == "," }) {
+            menu.performActionForItem(at: index)
+        } else {
+            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        }
+    }
+
+    /// Where new tasks go from a place that can't list them, such as the Dashboard.
+    private var homeForNewTasks: SidebarItem {
+        if shows(.allTasks) { return .allTasks }
+        return shows(.today) ? .today : .allTasks
+    }
+
+    /// Deletes a project. If it's open, moves on to its parent, or to the general list.
+    func deleteProject(_ project: Project) {
+        if sidebarSelection == .project(project.id) {
+            if let parent = project.parentID, store.project(with: parent) != nil {
+                select(.project(parent))
+            } else {
+                select(homeForNewTasks)
+            }
+        }
+        store.deleteProject(project.id)
+    }
+
     // MARK: - Navigation
 
+    /// For shortcuts into a place, such as a dashboard tile: a place that's been hidden stays hidden.
+    func selectIfShown(_ item: SidebarItem) {
+        if shows(item.element) { select(item) }
+    }
+
     func select(_ item: SidebarItem) {
-        searchText = ""
+        clearSearch()
         isComposing = false
         sidebarSelection = item
         if let id = selectedTaskID, !visibleTasks.contains(where: { $0.id == id }) {
@@ -230,21 +430,23 @@ final class AppState: ObservableObject {
     /// Shows a task wherever it lives — used when a reminder is clicked.
     func reveal(_ id: UUID) {
         guard let task = store.task(with: id) else { return }
-        searchText = ""
-        if let projectID = task.projectID, !TaskQuery.belongs(task, to: .today, now: Date(), calendar: .current) {
-            sidebarSelection = .project(projectID)
-        } else if TaskQuery.belongs(task, to: .today, now: Date(), calendar: .current) {
-            sidebarSelection = .today
-        } else {
-            sidebarSelection = task.isCompleted ? .completed : (task.dueDate == nil ? .inbox : .upcoming)
-        }
+        clearSearch()
+        // Best place first, skipping any the user has hidden.
+        var places: [SidebarItem] = []
+        if TaskQuery.belongs(task, to: .today, now: Date(), calendar: .current) { places.append(.today) }
+        if let projectID = task.projectID, store.project(with: projectID) != nil { places.append(.project(projectID)) }
+        places.append(task.isCompleted ? .completed : (task.dueDate == nil ? .allTasks : .upcoming))
+        if !task.isCompleted { places.append(.allTasks) }
+        if let place = places.first(where: { shows($0.element) }) { sidebarSelection = place }
         selectedTaskID = id
         isInspectorVisible = true
+        selectionScrollRequest += 1
     }
 
     func moveSelection(by offset: Int) {
         let ids = navigationOrder.map(\.id)
         guard !ids.isEmpty else { return }
+        defer { selectionScrollRequest += 1 }
         guard let current = selectedTaskID, let index = ids.firstIndex(of: current) else {
             selectedTaskID = offset > 0 ? ids.first : ids.last
             return
@@ -261,9 +463,9 @@ final class AppState: ObservableObject {
     /// ⌘N and the "+" buttons: opens the inline field in list view; elsewhere creates
     /// an untitled task and puts the cursor in its title.
     func beginNewTask() {
-        searchText = ""
+        clearSearch()
         if sidebarSelection == .dashboard || sidebarSelection == .completed {
-            sidebarSelection = .inbox
+            sidebarSelection = homeForNewTasks
         }
         if viewMode == .list {
             isComposing = true
@@ -373,6 +575,10 @@ final class AppState: ObservableObject {
         }
     }
 
+    func setDue(_ due: QuickDue, for ids: [UUID]) {
+        setDueDay(due.day, for: ids)
+    }
+
     func move(_ ids: [UUID], toProject projectID: UUID?) {
         store.updateTasks(ids, undoName: "Move to Project") { $0.projectID = projectID }
     }
@@ -389,11 +595,10 @@ final class AppState: ObservableObject {
         guard !ids.isEmpty else { return false }
         let today = Calendar.current.startOfDay(for: Date())
         switch item {
-        case .inbox: move(ids, toProject: nil)
+        case .allTasks, .dashboard: return false
         case .today: setDueDay(today, for: ids)
         case .upcoming: setDueDay(Calendar.current.date(byAdding: .day, value: 1, to: today), for: ids)
         case .completed: store.setStatus(ids, to: .done)
-        case .dashboard: return false
         case .project(let id): move(ids, toProject: id)
         }
         return true
@@ -403,13 +608,18 @@ final class AppState: ObservableObject {
     func handleDrop(_ items: [String], before targetID: UUID, in ordered: [TaskItem]) -> Bool {
         let ids = Self.taskIDs(from: items)
         guard let id = ids.first, id != targetID else { return false }
+        place(id, before: targetID, in: ordered)
+        return true
+    }
+
+    /// Placing a task by hand only means something in manual order, so that's what it switches to.
+    private func place(_ id: UUID, before targetID: UUID, in ordered: [TaskItem]) {
         var ordering = ordered
         if sort != .manual {
             sort = .manual
             ordering = ordered.sorted { $0.sortOrder < $1.sortOrder }
         }
         store.moveTask(id, before: targetID, in: ordering)
-        return true
     }
 
     /// Cards dropped on a board column (optionally in front of a card).
@@ -418,7 +628,7 @@ final class AppState: ObservableObject {
         guard !ids.isEmpty else { return false }
         store.setStatus(ids, to: status)
         if let targetID, let id = ids.first {
-            store.moveTask(id, before: targetID, in: ordered)
+            place(id, before: targetID, in: ordered)
         }
         return true
     }

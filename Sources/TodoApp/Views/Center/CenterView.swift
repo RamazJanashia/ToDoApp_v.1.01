@@ -2,6 +2,7 @@ import SwiftUI
 import TodoCore
 
 struct CenterView: View {
+    /// Observed so the lists follow edits; the window around them doesn't redraw for every keystroke.
     @EnvironmentObject private var store: TaskStore
     @EnvironmentObject private var state: AppState
 
@@ -11,7 +12,7 @@ struct CenterView: View {
         } else {
             let tasks = state.visibleTasks
             VStack(alignment: .leading, spacing: 0) {
-                CenterHeader(tasks: tasks, maxWidth: state.viewMode == .list ? Theme.Layout.readingWidth : .infinity)
+                CenterHeader(tasks: state.currentTasks, maxWidth: state.viewMode == .list ? Theme.Layout.readingWidth : .infinity)
                 switch state.viewMode {
                 case .list:
                     TaskListView(tasks: tasks)
@@ -39,7 +40,7 @@ struct CenterHeader: View {
     private var subtitle: String {
         let count = tasks.count
         let noun = count == 1 ? "task" : "tasks"
-        if state.isSearching { return "\(count) \(count == 1 ? "result" : "results") for “\(state.searchText.trimmingCharacters(in: .whitespaces))”" }
+        if state.isSearching { return "\(count) \(count == 1 ? "result" : "results") for “\(state.activeSearchText.trimmingCharacters(in: .whitespaces))”" }
         switch state.sidebarSelection {
         case .today:
             return "\(Date().formatted(.dateTime.weekday(.wide).month(.wide).day())) · \(count) \(noun)"
@@ -53,7 +54,7 @@ struct CenterHeader: View {
     }
 
     private var showsProgress: Bool {
-        guard !state.isSearching, !tasks.isEmpty, state.viewMode != .calendar else { return false }
+        guard state.shows(.headerProgress), !state.isSearching, !tasks.isEmpty, state.viewMode != .calendar else { return false }
         switch state.sidebarSelection {
         case .upcoming, .completed: return false
         default: return true
@@ -80,7 +81,7 @@ struct CenterHeader: View {
                 .foregroundColor(Theme.secondaryText)
                 .lineLimit(1)
                 .padding(.top, 10)
-            ProgressLine(fraction: tasks.isEmpty ? 0 : Double(doneCount) / Double(tasks.count))
+            ProgressLine(fraction: TaskItem.progress(of: tasks))
                 .padding(.top, 16)
                 .opacity(showsProgress ? 1 : 0)
                 .frame(height: showsProgress ? nil : 0)
@@ -100,13 +101,15 @@ struct ViewModeSwitcher: View {
     var body: some View {
         HStack(spacing: 2) {
             ForEach(Array(ViewMode.allCases.enumerated()), id: \.element) { index, mode in
-                IconButton(
-                    systemName: mode.icon,
-                    size: 13,
-                    isActive: state.viewMode == mode,
-                    help: "\(mode.title) (⌘\(index + 1))"
-                ) {
-                    withAnimation(Theme.Motion.quick) { state.viewMode = mode }
+                if state.shows(mode.element) {
+                    IconButton(
+                        systemName: mode.icon,
+                        size: 13,
+                        isActive: state.viewMode == mode,
+                        help: "\(mode.title) (⌘\(index + 1))"
+                    ) {
+                        withAnimation(Theme.Motion.quick) { state.viewMode = mode }
+                    }
                 }
             }
         }

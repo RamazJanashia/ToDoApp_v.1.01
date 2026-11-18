@@ -8,7 +8,7 @@ struct DashboardView: View {
     @EnvironmentObject private var state: AppState
 
     var body: some View {
-        let stats = DashboardStats(tasks: store.tasks, projects: store.projects)
+        let stats = DashboardStats(tasks: store.tasks, projects: store.projects.outline().map(\.project))
 
         GeometryReader { proxy in
             // The width the content actually gets, which picks the layout below.
@@ -35,48 +35,60 @@ struct DashboardView: View {
                 .font(Theme.Font.body)
                 .foregroundColor(Theme.secondaryText)
                 .padding(.top, 10)
-            ProgressLine(fraction: stats.completionRate)
-                .padding(.top, 16)
-            Text("\(Int((stats.completionRate * 100).rounded()))% of all tasks complete")
-                .font(Theme.Font.caption)
-                .foregroundColor(Theme.tertiaryText)
-                .padding(.top, 8)
-
-            metrics(stats, inOneRow: width >= 600)
-                .padding(.top, 28)
-
-            VStack(alignment: .leading, spacing: 4) {
-                SectionHeader("Activity")
-                Text("Tasks completed in the last 14 days")
+            if state.shows(.dashboardProgress) {
+                ProgressLine(fraction: stats.completionRate)
+                    .padding(.top, 16)
+                Text("\(Int((stats.completionRate * 100).rounded()))% of all tasks complete")
                     .font(Theme.Font.caption)
                     .foregroundColor(Theme.tertiaryText)
+                    .padding(.top, 8)
             }
-            .padding(.top, 34)
-            ActivityChart(days: stats.activity)
-                .frame(height: 170)
-                .padding(.top, 16)
+
+            if state.shows(.dashboardMetrics) {
+                metrics(stats, inOneRow: width >= 600)
+                    .padding(.top, 28)
+            }
+
+            if state.shows(.dashboardActivity) {
+                VStack(alignment: .leading, spacing: 4) {
+                    SectionHeader("Activity")
+                    Text("Tasks completed in the last 14 days")
+                        .font(Theme.Font.caption)
+                        .foregroundColor(Theme.tertiaryText)
+                }
+                .padding(.top, 34)
+                ActivityChart(days: stats.activity)
+                    .frame(height: 170)
+                    .padding(.top, 16)
+            }
 
             if width >= 680 {
                 HStack(alignment: .top, spacing: 44) {
-                    projectsSection(stats).frame(maxWidth: .infinity, alignment: .topLeading)
-                    upNextSection(stats).frame(maxWidth: .infinity, alignment: .topLeading)
+                    if state.shows(.dashboardProjects) {
+                        projectsSection(stats).frame(maxWidth: .infinity, alignment: .topLeading)
+                    }
+                    if state.shows(.dashboardUpNext) {
+                        upNextSection(stats).frame(maxWidth: .infinity, alignment: .topLeading)
+                    }
                 }
             } else {
-                projectsSection(stats)
-                upNextSection(stats)
+                if state.shows(.dashboardProjects) { projectsSection(stats) }
+                if state.shows(.dashboardUpNext) { upNextSection(stats) }
             }
 
-            prioritySection(stats)
+            if state.shows(.dashboardPriority) {
+                prioritySection(stats)
+            }
         }
     }
 
     /// Four tiles in a row when there's room, otherwise a 2 × 2 grid — never squeezed labels.
     @ViewBuilder
     private func metrics(_ stats: DashboardStats, inOneRow: Bool) -> some View {
-        let dueToday = MetricTile(value: stats.dueToday, label: "Due today") { state.select(.today) }
-        let overdue = MetricTile(value: stats.overdue, label: "Overdue", tint: stats.overdue > 0 ? Theme.red : nil) { state.select(.today) }
-        let completedToday = MetricTile(value: stats.completedToday, label: "Completed today") { state.select(.completed) }
-        let thisWeek = MetricTile(value: stats.completedThisWeek, label: "Done this week") { state.select(.completed) }
+        let dueToday = MetricTile(value: stats.dueToday, label: "Due today") { state.selectIfShown(.today) }
+        let overdue = MetricTile(value: stats.overdue, label: "Overdue", tint: stats.overdue > 0 ? Theme.red : nil) { state.selectIfShown(.today) }
+        let completedToday = MetricTile(value: stats.completedToday, label: "Completed today") { state.selectIfShown(.completed) }
+        let thisWeek = MetricTile(value: stats.completedThisWeek, label: "Done this week") { state.selectIfShown(.completed) }
 
         if inOneRow {
             HStack(spacing: 0) {
@@ -273,7 +285,7 @@ struct UpNextRow: View {
             HStack(spacing: 12) {
                 Circle().fill(Theme.checkboxFill).frame(width: 9, height: 9)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(task.title.isEmpty ? "Untitled" : task.title)
+                    Text(task.displayTitle)
                         .font(Theme.Font.body)
                         .foregroundColor(Theme.primaryText)
                         .lineLimit(1)

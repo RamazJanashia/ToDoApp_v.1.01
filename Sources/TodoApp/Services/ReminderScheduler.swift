@@ -24,11 +24,17 @@ final class ReminderScheduler: NSObject, UNUserNotificationCenterDelegate {
     private var latest: (tasks: [TaskItem], projects: [Project])?
     private var hasRequestedAuthorization = false
     private let logger = Logger(subsystem: "local.todoapp.TodoApp", category: "reminders")
+    private let isEnabled: Bool
 
-    /// `nil` when running outside an app bundle (e.g. straight from the build folder),
-    /// where the notification center is unavailable.
+    init(enabled: Bool = true) {
+        isEnabled = enabled
+        super.init()
+    }
+
+    /// `nil` when switched off, or when running outside an app bundle (e.g. straight from
+    /// the build folder), where the notification center is unavailable.
     private var center: UNUserNotificationCenter? {
-        Bundle.main.bundleIdentifier == nil ? nil : UNUserNotificationCenter.current()
+        isEnabled && Bundle.main.bundleIdentifier != nil ? UNUserNotificationCenter.current() : nil
     }
 
     func activate() {
@@ -38,8 +44,10 @@ final class ReminderScheduler: NSObject, UNUserNotificationCenterDelegate {
         center.removeAllPendingNotificationRequests()
     }
 
-    func requestAuthorizationIfNeeded() {
-        guard let center, !hasRequestedAuthorization else { return }
+    /// `onDenied` runs on the main thread if notifications are off. Passing it always asks the
+    /// system, which only prompts the first time, so a later denial is noticed too.
+    func requestAuthorizationIfNeeded(onDenied: (() -> Void)? = nil) {
+        guard let center, !hasRequestedAuthorization || onDenied != nil else { return }
         hasRequestedAuthorization = true
         center.requestAuthorization(options: [.alert, .sound, .badge]) { [weak self, logger] granted, error in
             if let error {
@@ -47,7 +55,10 @@ final class ReminderScheduler: NSObject, UNUserNotificationCenterDelegate {
             } else if !granted {
                 logger.notice("Notifications are turned off for TodoApp in System Settings.")
             }
-            guard granted else { return }
+            guard granted else {
+                if let onDenied { DispatchQueue.main.async(execute: onDenied) }
+                return
+            }
             // Anything scheduled while the permission prompt was up may have been dropped.
             DispatchQueue.main.async {
                 guard let self, let latest = self.latest else { return }
@@ -55,6 +66,13 @@ final class ReminderScheduler: NSObject, UNUserNotificationCenterDelegate {
                 self.sync(tasks: latest.tasks, projects: latest.projects)
             }
         }
+    }
+
+    /// Picks up what time alone changes: reminders past the limit coming into range as earlier
+    /// ones fire, and a new time zone.
+    func resync() {
+        guard let latest else { return }
+        sync(tasks: latest.tasks, projects: latest.projects)
     }
 
     func sync(tasks: [TaskItem], projects: [Project]) {
@@ -70,9 +88,11 @@ final class ReminderScheduler: NSObject, UNUserNotificationCenterDelegate {
             .prefix(Self.maximumPending)
 
         let projectNames = Dictionary(projects.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+        // The time zone counts because triggers are set in local time.
+        let timeZone = TimeZone.current.identifier
         let fingerprint = upcoming.map { entry -> String in
             let project = entry.task.projectID.flatMap { projectNames[$0] } ?? ""
-            return "\(entry.task.id)|\(entry.fireDate.timeIntervalSince1970)|\(entry.task.title)|\(project)|\(entry.task.dueDate?.timeIntervalSince1970 ?? 0)"
+            return "\(timeZone)|\(entry.task.id)|\(entry.fireDate.timeIntervalSince1970)|\(entry.task.title)|\(project)|\(entry.task.dueDate?.timeIntervalSince1970 ?? 0)"
         }
         guard fingerprint != lastFingerprint else { return }
         lastFingerprint = fingerprint

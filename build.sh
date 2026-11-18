@@ -36,6 +36,10 @@ if [[ "$ACTION" == "--check" ]]; then
   echo "→ Running TodoCore checks"
   swiftc -target "$TARGET" -I "$OBJ" -L "$OBJ" -lTodoCore -o "$OBJ/TodoCoreChecks" Tests/TodoCoreChecks/main.swift
   "$OBJ/TodoCoreChecks"
+  echo "→ Running TaskStore checks"
+  swiftc -target "$TARGET" -I "$OBJ" -L "$OBJ" -lTodoCore -o "$OBJ/TaskStoreChecks" \
+    Tests/TaskStoreChecks/main.swift Sources/TodoApp/Store/TaskStore.swift Sources/TodoApp/Services/*.swift
+  "$OBJ/TaskStoreChecks"
   exit $?
 fi
 

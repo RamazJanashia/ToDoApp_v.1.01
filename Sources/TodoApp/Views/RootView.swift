@@ -3,7 +3,9 @@ import TodoCore
 
 /// Sidebar · task list · inspector, under a seamless near-black title bar.
 struct RootView: View {
-    @EnvironmentObject private var store: TaskStore
+    /// The store isn't observed here: every edit would rebuild the toolbar and window chrome.
+    /// The columns observe it themselves.
+    private var store: TaskStore { state.store }
     @EnvironmentObject private var state: AppState
     @Environment(\.undoManager) private var undoManager
 
@@ -61,37 +63,46 @@ struct RootView: View {
             )
         ) {
             Button("Delete Project", role: .destructive) {
-                if let project = state.projectPendingDeletion {
-                    if state.sidebarSelection == .project(project.id) { state.select(.inbox) }
-                    store.deleteProject(project.id)
-                }
+                if let project = state.projectPendingDeletion { state.deleteProject(project) }
                 state.projectPendingDeletion = nil
             }
             Button("Cancel", role: .cancel) { state.projectPendingDeletion = nil }
         } message: {
-            Text("Its tasks will move to the Inbox. You can undo this with ⌘Z.")
+            Text(deletionMessage)
         }
-        .alert(
-            "Couldn’t open your tasks",
-            isPresented: Binding(get: { store.loadIssue != nil }, set: { if !$0 { store.loadIssue = nil } })
-        ) {
-            Button("OK") { store.loadIssue = nil }
-        } message: {
-            Text(store.loadIssue ?? "")
-        }
+        .background(StoreAlertPresenter())
         .onAppear { store.undoManager = undoManager }
         .onChange(of: undoManager) { store.undoManager = $0 }
+    }
+
+    private var deletionMessage: String {
+        let parent = store.project(with: state.projectPendingDeletion?.parentID)
+        let home = parent.map { "“\($0.name)”" }
+        let what = home.map { "Its tasks and sub-projects will move to \($0)." }
+            ?? "Its tasks will stay in All Tasks without a project, and its sub-projects will move to the top level."
+        return "\(what) You can undo this with ⌘Z."
     }
 
     private static let centerMinWidth: Double = 500
     private static let sidebarRange: ClosedRange<Double> = 200...340
     private static let inspectorRange: ClosedRange<Double> = 290...480
 
-    /// On small windows the side columns give way (down to their minimums) so the task list
-    /// keeps room to breathe; on larger windows they use the widths the user dragged them to.
+    /// The columns use the widths the user dragged them to. When that would leave the task list
+    /// too little room, they give way down to their minimums, the inspector first.
     private func columnWidths(for total: Double) -> (sidebar: Double, inspector: Double) {
-        let sidebar = min(sidebarWidth, max(Self.sidebarRange.lowerBound, total * 0.19))
-        let inspector = min(inspectorWidth, max(Self.inspectorRange.lowerBound, total * 0.25))
+        var sidebar = min(max(sidebarWidth, Self.sidebarRange.lowerBound), Self.sidebarRange.upperBound)
+        var inspector = min(max(inspectorWidth, Self.inspectorRange.lowerBound), Self.inspectorRange.upperBound)
+        var excess = Self.centerMinWidth - total
+            + (state.isSidebarVisible ? sidebar + 1 : 0)
+            + (state.isInspectorVisible ? inspector + 1 : 0)
+        if excess > 0, state.isInspectorVisible {
+            let cut = min(excess, inspector - Self.inspectorRange.lowerBound)
+            inspector -= cut
+            excess -= cut
+        }
+        if excess > 0, state.isSidebarVisible {
+            sidebar -= min(excess, sidebar - Self.sidebarRange.lowerBound)
+        }
         return (sidebar, inspector)
     }
 
@@ -104,6 +115,15 @@ struct RootView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .navigation) {
+            IconButton(
+                systemName: "sidebar.left",
+                size: 15,
+                help: state.isSidebarVisible ? "Hide Sidebar (⌃⌘S)" : "Show Sidebar (⌃⌘S)"
+            ) {
+                withAnimation(Theme.Motion.standard) { state.isSidebarVisible.toggle() }
+            }
+        }
         ToolbarItem(placement: .principal) {
             Text(state.windowTitle)
                 .font(.system(size: 13, weight: .medium))
@@ -111,19 +131,23 @@ struct RootView: View {
                 .lineLimit(1)
         }
         ToolbarItemGroup(placement: .automatic) {
-            ToolbarSearchField()
-            Menu {
-                Picker("Appearance", selection: $state.appearance) {
-                    ForEach(AppearancePreference.allCases) { option in
-                        Label(option.title, systemImage: option.icon).tag(option)
-                    }
-                }
-                .pickerStyle(.inline)
-            } label: {
-                Image(systemName: state.appearance.icon)
+            if state.shows(.toolbarSearch) {
+                ToolbarSearchField()
             }
-            .menuIndicator(.hidden)
-            .help("Appearance")
+            if state.shows(.toolbarAppearance) {
+                Menu {
+                    Picker("Appearance", selection: $state.appearance) {
+                        ForEach(AppearancePreference.allCases) { option in
+                            Label(option.title, systemImage: option.icon).tag(option)
+                        }
+                    }
+                    .pickerStyle(.inline)
+                } label: {
+                    Image(systemName: state.appearance.icon)
+                }
+                .menuIndicator(.hidden)
+                .help("Appearance")
+            }
             IconButton(
                 systemName: "sidebar.right",
                 size: 15,
@@ -136,27 +160,48 @@ struct RootView: View {
     }
 }
 
+/// Shows the store's alerts. A view of its own, so watching for them doesn't redraw the window.
+private struct StoreAlertPresenter: View {
+    @EnvironmentObject private var store: TaskStore
+
+    var body: some View {
+        Color.clear
+            .alert(
+                store.alert?.title ?? "",
+                isPresented: Binding(get: { store.alert != nil }, set: { if !$0 { store.alert = nil } })
+            ) {
+                Button("OK") { store.alert = nil }
+            } message: {
+                Text(store.alert?.message ?? "")
+            }
+    }
+}
+
 /// A compact search field that lives in the title bar. ⌘F focuses it, Escape clears it.
 struct ToolbarSearchField: View {
     @EnvironmentObject private var state: AppState
     @FocusState private var focused: Bool
+    /// Kept here, so a keystroke redraws only the field; the list catches up once typing pauses.
+    @State private var text = ""
 
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 11.5, weight: .medium))
                 .foregroundColor(Theme.tertiaryText)
-            TextField("Search", text: $state.searchText)
+            TextField("Search", text: $text)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
                 .focused($focused)
+                .onChange(of: text) { state.searchFieldChanged($0) }
+                .onChange(of: state.searchClearCount) { _ in text = state.searchText }
                 .onExitCommand {
-                    state.searchText = ""
+                    state.clearSearch()
                     focused = false
                 }
-            if !state.searchText.isEmpty {
+            if !text.isEmpty {
                 Button {
-                    state.searchText = ""
+                    state.clearSearch()
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 11))
