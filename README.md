@@ -2,7 +2,7 @@
 
 A native task manager for macOS (Swift and SwiftUI) and Windows (C# and WinUI 3). Minimal and monochrome on the surface, with projects, recurring tasks, reminders, a board, a calendar and a dashboard underneath.
 
-[![Build](https://github.com/RamazJanashia/ToDoApp/actions/workflows/build.yml/badge.svg)](https://github.com/RamazJanashia/ToDoApp/actions/workflows/build.yml)
+[![Build](https://github.com/RamazJanashia/ToDoApp_v.1.01/actions/workflows/build.yml/badge.svg)](https://github.com/RamazJanashia/ToDoApp_v.1.01/actions/workflows/build.yml)
 ![Platform](https://img.shields.io/badge/platform-macOS%2013%2B%20%7C%20Windows%2010%2B-lightgrey)
 ![Swift](https://img.shields.io/badge/Swift-5.8%2B-orange)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4)
@@ -42,7 +42,7 @@ A native task manager for macOS (Swift and SwiftUI) and Windows (C# and WinUI 3)
 ## Build and run
 
 ```sh
-git clone https://github.com/RamazJanashia/ToDoApp.git
+git clone https://github.com/RamazJanashia/ToDoApp_v.1.01.git ToDoApp
 cd ToDoApp
 ./build.sh --run
 ```
@@ -105,7 +105,7 @@ The Windows version lives in `windows/`. It is a native WinUI 3 app (C#, .NET 10
 **Requirements:** Windows 10 version 1809 or later, or Windows 11 (x64). To build: the [.NET SDK 10](https://dotnet.microsoft.com/download). No Visual Studio needed.
 
 ```powershell
-git clone https://github.com/RamazJanashia/ToDoApp.git
+git clone https://github.com/RamazJanashia/ToDoApp_v.1.01.git ToDoApp
 cd ToDoApp\windows
 .\build.ps1 -Run
 ```
