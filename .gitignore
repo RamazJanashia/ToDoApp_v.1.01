@@ -11,3 +11,8 @@ xcuserdata/
 
 # macOS
 .DS_Store
+
+# Private notes (agent context, plans): keep local only
+CLAUDE.md
+docs/superpowers/
+.superpowers/

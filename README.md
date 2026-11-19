@@ -2,7 +2,7 @@
 
 A native macOS task manager built with Swift and SwiftUI. Minimal and monochrome on the surface, with projects, recurring tasks, reminders, a board, a calendar and a dashboard underneath.
 
-[![Build](https://github.com/RamazJanashia/ToDoApp/actions/workflows/build.yml/badge.svg)](https://github.com/RamazJanashia/ToDoApp/actions/workflows/build.yml)
+[![Build](https://github.com/RamazJanashia/ToDoApp_v.1.01/actions/workflows/build.yml/badge.svg)](https://github.com/RamazJanashia/ToDoApp_v.1.01/actions/workflows/build.yml)
 ![Platform](https://img.shields.io/badge/platform-macOS%2013%2B-lightgrey)
 ![Swift](https://img.shields.io/badge/Swift-5.8%2B-orange)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -41,7 +41,7 @@ A native macOS task manager built with Swift and SwiftUI. Minimal and monochrome
 ## Build and run
 
 ```sh
-git clone https://github.com/RamazJanashia/ToDoApp.git
+git clone https://github.com/RamazJanashia/ToDoApp_v.1.01.git ToDoApp
 cd ToDoApp
 ./build.sh --run
 ```
